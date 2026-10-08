@@ -236,15 +236,20 @@ export const roomService = {
       .from('bookings')
       .select('room_id, booking_status, check_in, check_out')
       .lt('check_in', checkOutDate)
-      .gt('check_out', checkInDate)
-      .in('booking_status', ['pending', 'confirmed', 'checked_in']);
+      .gt('check_out', checkInDate);
 
     if (bookingsErr) {
       console.error('Error fetching overlapping bookings:', bookingsErr);
     }
 
+    // Non-blocking statuses: cancelled, checked_out, completed
+    const nonBlockingStatuses = new Set(['cancelled', 'checked_out', 'completed']);
+
+    // Filter active blocking bookings (any booking not cancelled, checked_out, or completed)
     const bookedRoomIds = new Set(
-      (overlappingBookings || []).map((b) => b.room_id)
+      (overlappingBookings || [])
+        .filter((b) => !b.booking_status || !nonBlockingStatuses.has(String(b.booking_status).toLowerCase()))
+        .map((b) => b.room_id)
     );
 
     // 3. Group availability per room_type_id

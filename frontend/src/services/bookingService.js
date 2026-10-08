@@ -42,10 +42,7 @@ export const bookingService = {
       throw new Error("Sorry, this room type is currently unavailable for your selected dates. Please select another room or change dates.");
     }
 
-    // 2. Automatically allocate an available physical room
-    const allocatedPhysicalRoom = typeAvailability.availableRooms[0];
-
-    // 3. Fetch server-side base_price from public.room_types
+    // 2. Fetch server-side base_price from public.room_types
     const { data: roomType, error: rtErr } = await supabase
       .from('room_types')
       .select('name, base_price, max_guests')
@@ -68,49 +65,63 @@ export const bookingService = {
     const dbPaymentStatus = isPayAtHotel ? 'pending' : 'paid';
     const dbGateway = isPayAtHotel ? 'pay_at_hotel' : 'online';
 
-    // 4. Insert into public.bookings using exact schema columns (subtotal, total_amount, special_request, booking_status)
-    const { data: newBooking, error: insertErr } = await supabase
-      .from('bookings')
-      .insert([
-        {
-          user_id: userId,
-          room_id: allocatedPhysicalRoom.id,
-          check_in: checkIn,
-          check_out: checkOut,
-          guests: Number(guestsCount) || 2,
-          subtotal: finalSubtotal,
-          total_amount: finalTotal,
-          special_request: specialRequest || null,
-          booking_status: dbBookingStatus
-        }
-      ])
-      .select(`
-        *,
-        rooms (
-          id,
-          room_number,
-          floor_number,
-          room_types (
-            id,
-            name,
-            description,
-            base_price,
-            room_images (image_url)
-          )
-        )
-      `)
-      .single();
+    // 3. Robust allocation loop across candidate physical rooms
+    const candidateRooms = typeAvailability.availableRooms;
+    let newBooking = null;
+    let lastInsertError = null;
 
-    if (insertErr) {
-      console.error('Booking insertion error:', insertErr);
+    for (const allocatedPhysicalRoom of candidateRooms) {
+      const { data, error: insertErr } = await supabase
+        .from('bookings')
+        .insert([
+          {
+            user_id: userId,
+            room_id: allocatedPhysicalRoom.id,
+            check_in: checkIn,
+            check_out: checkOut,
+            guests: Number(guestsCount) || 2,
+            subtotal: finalSubtotal,
+            total_amount: finalTotal,
+            special_request: specialRequest || null,
+            booking_status: dbBookingStatus
+          }
+        ])
+        .select(`
+          *,
+          rooms (
+            id,
+            room_number,
+            floor_number,
+            room_types (
+              id,
+              name,
+              description,
+              base_price,
+              room_images (image_url)
+            )
+          )
+        `)
+        .single();
+
+      if (!insertErr && data) {
+        newBooking = data;
+        break; // Successfully inserted booking!
+      }
+
+      lastInsertError = insertErr;
+      console.warn(`Physical room ${allocatedPhysicalRoom.room_number} (${allocatedPhysicalRoom.id}) insert conflict, trying next available physical room:`, insertErr?.message);
+    }
+
+    if (!newBooking) {
+      console.error('All candidate physical rooms failed insertion:', lastInsertError);
       if (
-        insertErr.code === '23P01' ||
-        insertErr.message?.toLowerCase().includes('exclusion') ||
-        insertErr.message?.toLowerCase().includes('overlap')
+        lastInsertError?.code === '23P01' ||
+        lastInsertError?.message?.toLowerCase().includes('exclusion') ||
+        lastInsertError?.message?.toLowerCase().includes('overlap')
       ) {
         throw new Error("Sorry, this room was just booked for these dates. Please select another room or search again.");
       }
-      throw new Error(insertErr.message || "Failed to create booking.");
+      throw new Error(lastInsertError?.message || "Failed to create booking.");
     }
 
     // 5. Insert guest information into public.booking_guests if provided
