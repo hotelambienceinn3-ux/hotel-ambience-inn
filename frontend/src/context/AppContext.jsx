@@ -184,15 +184,33 @@ export const AppProvider = ({ children }) => {
 
     const authUser = session.user;
     try {
-      const dbProfile = await authService.getUserProfile(authUser.id);
+      let dbProfile = await authService.getUserProfile(authUser.id);
       
+      // If dbProfile does not exist yet (e.g. first-time Google OAuth sign in), create/retrieve customer profile safely
+      if (!dbProfile) {
+        dbProfile = await authService.ensureUserProfile(authUser);
+      }
+
+      const resolvedName =
+        dbProfile?.full_name ||
+        authUser.user_metadata?.full_name ||
+        authUser.user_metadata?.name ||
+        authUser.email?.split('@')[0] ||
+        'Valued Guest';
+
+      const resolvedAvatar =
+        dbProfile?.avatar_url ||
+        authUser.user_metadata?.avatar_url ||
+        authUser.user_metadata?.picture ||
+        '';
+
       const combinedUserData = {
         id: authUser.id,
         email: authUser.email,
-        name: dbProfile?.full_name || authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Valued Guest',
-        full_name: dbProfile?.full_name || authUser.user_metadata?.full_name || '',
+        name: resolvedName,
+        full_name: dbProfile?.full_name || authUser.user_metadata?.full_name || authUser.user_metadata?.name || '',
         phone: dbProfile?.phone || '',
-        avatar_url: dbProfile?.avatar_url || '',
+        avatar_url: resolvedAvatar,
         role: dbProfile?.role || 'customer',
       };
 
@@ -204,12 +222,24 @@ export const AppProvider = ({ children }) => {
       }
     } catch (err) {
       console.error("Error fetching user profile:", err);
+      const fallbackName =
+        authUser.user_metadata?.full_name ||
+        authUser.user_metadata?.name ||
+        authUser.email?.split('@')[0] ||
+        'Valued Guest';
+
+      const fallbackAvatar =
+        authUser.user_metadata?.avatar_url ||
+        authUser.user_metadata?.picture ||
+        '';
+
       setUser({
         id: authUser.id,
         email: authUser.email,
-        name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Valued Guest',
-        full_name: authUser.user_metadata?.full_name || '',
+        name: fallbackName,
+        full_name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || '',
         phone: '',
+        avatar_url: fallbackAvatar,
         role: 'customer'
       });
     } finally {
@@ -218,19 +248,36 @@ export const AppProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    authService.getCurrentSession()
-      .then((session) => {
-        syncUserProfile(session);
-      })
-      .catch(() => {
-        setAuthLoading(false);
-      });
+    let isMounted = true;
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      syncUserProfile(session);
+    // Listen to Supabase auth state changes (handles OAuth redirect token parsing, initial session, signin, signout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
+
+      if (session) {
+        await syncUserProfile(session);
+        // Clean URL hash/query string after OAuth redirect without causing a page refresh
+        if (window.location.hash.includes('access_token=') || window.location.search.includes('code=')) {
+          window.history.replaceState(null, '', window.location.pathname);
+        }
+      } else {
+        await syncUserProfile(null);
+      }
     });
 
+    // Check active session on mount
+    authService.getCurrentSession()
+      .then((session) => {
+        if (isMounted && session) {
+          syncUserProfile(session);
+        }
+      })
+      .catch(() => {
+        if (isMounted) setAuthLoading(false);
+      });
+
     return () => {
+      isMounted = false;
       subscription?.unsubscribe();
     };
   }, []);

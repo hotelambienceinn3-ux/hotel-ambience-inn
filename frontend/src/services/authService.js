@@ -139,14 +139,65 @@ export const authService = {
       .from('profiles')
       .select('*')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
     if (error) {
-      console.warn(`Profile not found or error loading profile for user ${userId}:`, error.message);
+      console.warn(`Profile query warning for user ${userId}:`, error.message);
       return null;
     }
 
     return data;
+  },
+
+  /**
+   * Ensure customer profile exists in public.profiles table.
+   * If profile already exists, returns existing profile (no duplicate, no overwrite).
+   * If profile does not exist, inserts customer profile with default role = 'customer'.
+   */
+  ensureUserProfile: async (user) => {
+    if (!user || !user.id) return null;
+
+    try {
+      const existing = await authService.getUserProfile(user.id);
+      if (existing) {
+        return existing;
+      }
+
+      const fullName =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        user.email?.split('@')[0] ||
+        'Valued Guest';
+
+      const avatarUrl =
+        user.user_metadata?.avatar_url ||
+        user.user_metadata?.picture ||
+        '';
+
+      const newProfile = {
+        id: user.id,
+        email: user.email,
+        full_name: fullName,
+        avatar_url: avatarUrl,
+        role: 'customer'
+      };
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .upsert(newProfile, { onConflict: 'id' })
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Could not create profile row in database:', error.message);
+        return null;
+      }
+
+      return data;
+    } catch (err) {
+      console.warn('Error ensuring user profile:', err.message);
+      return null;
+    }
   },
 
   /**
