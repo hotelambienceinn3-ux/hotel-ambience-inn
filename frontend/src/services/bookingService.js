@@ -16,7 +16,10 @@ export const bookingService = {
     checkOut,
     guestsCount = 2,
     specialRequest = '',
-    guestInfo = []
+    guestInfo = [],
+    paymentMethod = 'Pay at Hotel',
+    totalPrice = null,
+    subtotalPrice = null
   }) => {
     if (!userId) {
       throw new Error("You must be signed in to complete a reservation.");
@@ -54,12 +57,18 @@ export const bookingService = {
     }
 
     const pricePerNight = Number(roomType.base_price) || 0;
-    const subtotal = pricePerNight * nights;
-    const tax = 0; // Tax is 0 for now as per configuration
-    const discount = 0;
-    const total = subtotal + tax - discount;
+    const computedSubtotal = pricePerNight * nights;
+    const finalSubtotal = subtotalPrice ? Number(subtotalPrice) : computedSubtotal;
+    const finalTotal = totalPrice ? Number(totalPrice) : finalSubtotal;
 
-    // 4. Insert into public.bookings
+    // Determine booking_status and payment_status
+    // Pay Upon Arrival creates a CONFIRMED room reservation with PENDING payment
+    const dbBookingStatus = 'confirmed';
+    const isPayAtHotel = paymentMethod === 'Pay at Hotel' || paymentMethod === 'pay_at_hotel';
+    const dbPaymentStatus = isPayAtHotel ? 'pending' : 'paid';
+    const dbGateway = isPayAtHotel ? 'pay_at_hotel' : 'online';
+
+    // 4. Insert into public.bookings using exact schema columns (subtotal, total_amount, special_request, booking_status)
     const { data: newBooking, error: insertErr } = await supabase
       .from('bookings')
       .insert([
@@ -69,12 +78,10 @@ export const bookingService = {
           check_in: checkIn,
           check_out: checkOut,
           guests: Number(guestsCount) || 2,
-          subtotal,
-          tax,
-          discount,
-          total,
+          subtotal: finalSubtotal,
+          total_amount: finalTotal,
           special_request: specialRequest || null,
-          booking_status: 'pending'
+          booking_status: dbBookingStatus
         }
       ])
       .select(`
@@ -101,7 +108,7 @@ export const bookingService = {
         insertErr.message?.toLowerCase().includes('exclusion') ||
         insertErr.message?.toLowerCase().includes('overlap')
       ) {
-        throw new Error("Sorry, this room was just booked. Please select another room or search again.");
+        throw new Error("Sorry, this room was just booked for these dates. Please select another room or search again.");
       }
       throw new Error(insertErr.message || "Failed to create booking.");
     }
@@ -124,7 +131,36 @@ export const bookingService = {
       }
     }
 
-    return newBooking;
+    // 6. Insert payment record into public.payments
+    const { data: paymentRecord, error: payErr } = await supabase
+      .from('payments')
+      .insert([
+        {
+          booking_id: newBooking.id,
+          user_id: userId,
+          amount: finalTotal,
+          currency: 'INR',
+          payment_status: dbPaymentStatus,
+          gateway: dbGateway
+        }
+      ])
+      .select()
+      .single();
+
+    if (payErr) {
+      console.warn('Error creating payment record in Supabase:', payErr.message);
+    }
+
+    const year = new Date(newBooking.created_at || Date.now()).getFullYear();
+    const formattedRefId = `HAI-${year}-${newBooking.id.slice(0, 5).toUpperCase()}`;
+
+    return {
+      ...newBooking,
+      formattedRefId,
+      payment: paymentRecord || { payment_status: dbPaymentStatus, gateway: dbGateway },
+      payment_method: paymentMethod,
+      payment_status: dbPaymentStatus
+    };
   },
 
   /**
@@ -149,7 +185,8 @@ export const bookingService = {
             room_images (image_url)
           )
         ),
-        booking_guests (*)
+        booking_guests (*),
+        payments (*)
       `)
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
@@ -164,16 +201,25 @@ export const bookingService = {
       const images = roomType?.room_images || [];
       const primaryImage = images[0]?.image_url || 'https://images.unsplash.com/photo-1590490360182-c33d57733427?auto=format&fit=crop&w=1200&q=80';
 
-      const rawStatus = b.booking_status || 'pending';
-      let formattedStatus = 'Pending';
+      const rawStatus = b.booking_status || 'confirmed';
+      let formattedStatus = 'Confirmed';
       if (rawStatus === 'confirmed') formattedStatus = 'Confirmed';
       else if (rawStatus === 'checked_in') formattedStatus = 'Checked-In';
       else if (rawStatus === 'checked_out') formattedStatus = 'Checked-Out';
       else if (rawStatus === 'cancelled') formattedStatus = 'Cancelled';
       else if (rawStatus === 'completed') formattedStatus = 'Completed';
+      else if (rawStatus === 'pending') formattedStatus = 'Pending';
+
+      const paymentRec = b.payments?.[0];
+      const isPayAtHotel = !paymentRec || paymentRec.gateway === 'pay_at_hotel';
+      const paymentMethodText = isPayAtHotel ? 'Pay Upon Arrival at Hotel' : 'Paid Online';
+      const paymentStatusText = paymentRec?.payment_status === 'paid' ? 'Paid' : 'Pending / Pay at Hotel';
+
+      const year = new Date(b.created_at || Date.now()).getFullYear();
+      const refId = `HAI-${year}-${b.id.slice(0, 5).toUpperCase()}`;
 
       return {
-        id: b.id.slice(0, 8).toUpperCase(),
+        id: refId,
         fullId: b.id,
         roomTitle: roomType?.name || 'Sanctuary Room',
         roomNumber: b.rooms?.room_number || '',
@@ -182,9 +228,11 @@ export const bookingService = {
         checkIn: b.check_in,
         checkOut: b.check_out,
         guests: `${b.guests} Guests`,
-        totalPrice: Number(b.total) || 0,
+        totalPrice: Number(b.total_amount || b.subtotal) || 0,
         subtotal: Number(b.subtotal) || 0,
-        tax: Number(b.tax) || 0,
+        paymentMethod: paymentMethodText,
+        paymentStatus: paymentStatusText,
+        rawPaymentStatus: paymentRec?.payment_status || 'pending',
         status: formattedStatus,
         rawStatus,
         createdAt: b.created_at ? b.created_at.split('T')[0] : ''
@@ -218,7 +266,8 @@ export const bookingService = {
           email,
           phone
         ),
-        booking_guests (*)
+        booking_guests (*),
+        payments (*)
       `)
       .order('created_at', { ascending: false });
 
@@ -231,21 +280,33 @@ export const bookingService = {
       const roomType = b.rooms?.room_types;
       const guestProfile = b.profiles;
       const firstGuestInfo = b.booking_guests?.[0];
+      const paymentRec = b.payments?.[0];
 
-      const rawStatus = b.booking_status || 'pending';
-      let formattedStatus = 'Pending';
+      const rawStatus = b.booking_status || 'confirmed';
+      let formattedStatus = 'Confirmed';
       if (rawStatus === 'confirmed') formattedStatus = 'Confirmed';
       else if (rawStatus === 'checked_in') formattedStatus = 'Checked-In';
       else if (rawStatus === 'checked_out') formattedStatus = 'Checked-Out';
       else if (rawStatus === 'cancelled') formattedStatus = 'Cancelled';
       else if (rawStatus === 'completed') formattedStatus = 'Completed';
+      else if (rawStatus === 'pending') formattedStatus = 'Pending';
 
       const guestName = guestProfile?.full_name || firstGuestInfo?.full_name || guestProfile?.email?.split('@')[0] || 'Guest User';
       const guestEmail = guestProfile?.email || '';
       const guestPhone = guestProfile?.phone || '';
 
+      const totalAmt = Number(b.total_amount || b.subtotal) || 0;
+      const isPaid = paymentRec?.payment_status === 'paid';
+      const amountPaid = isPaid ? totalAmt : 0;
+      const amountPending = isPaid ? 0 : totalAmt;
+
+      const year = new Date(b.created_at || Date.now()).getFullYear();
+      const refId = `HAI-${year}-${b.id.slice(0, 5).toUpperCase()}`;
+
+      const isPayAtHotel = !paymentRec || paymentRec.gateway === 'pay_at_hotel';
+
       return {
-        id: b.id.slice(0, 8).toUpperCase(),
+        id: refId,
         fullId: b.id,
         userId: b.user_id,
         guestName,
@@ -260,9 +321,14 @@ export const bookingService = {
         checkOut: b.check_out,
         guests: `${b.guests} Guests`,
         guestsCount: b.guests,
-        totalPrice: Number(b.total) || 0,
+        totalPrice: totalAmt,
         subtotal: Number(b.subtotal) || 0,
-        tax: Number(b.tax) || 0,
+        amountPaid,
+        amountPending,
+        paymentMethod: isPayAtHotel ? 'Pay Upon Arrival' : 'Online Payment',
+        paymentStatus: isPaid ? 'Paid' : 'Pending',
+        rawPaymentStatus: paymentRec?.payment_status || 'pending',
+        paymentId: paymentRec?.id,
         status: formattedStatus,
         rawStatus,
         createdAt: b.created_at ? b.created_at.split('T')[0] : ''
@@ -307,6 +373,67 @@ export const bookingService = {
     }
 
     return data;
+  },
+
+  /**
+   * ADMIN FUNCTION: Update payment status in public.payments (e.g., Pending -> Paid when customer pays at front desk)
+   */
+  updatePaymentStatusAdmin: async (bookingId, newPaymentStatus) => {
+    const statusLower = (newPaymentStatus || 'pending').toLowerCase();
+    
+    // Check if payment record already exists
+    const { data: existingPayment } = await supabase
+      .from('payments')
+      .select('*')
+      .eq('booking_id', bookingId)
+      .maybeSingle();
+
+    if (existingPayment) {
+      const { data, error } = await supabase
+        .from('payments')
+        .update({
+          payment_status: statusLower
+        })
+        .eq('id', existingPayment.id)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error updating payment status:', error);
+        throw new Error(error.message || "Failed to update payment status.");
+      }
+      return data;
+    } else {
+      // Create new payment record if none exists
+      const { data: booking } = await supabase
+        .from('bookings')
+        .select('user_id, total_amount, subtotal')
+        .eq('id', bookingId)
+        .single();
+
+      const amount = Number(booking?.total_amount || booking?.subtotal || 0);
+
+      const { data, error } = await supabase
+        .from('payments')
+        .insert([
+          {
+            booking_id: bookingId,
+            user_id: booking?.user_id,
+            amount,
+            currency: 'INR',
+            payment_status: statusLower,
+            gateway: 'pay_at_hotel'
+          }
+        ])
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating payment record:', error);
+        throw new Error(error.message || "Failed to create payment record.");
+      }
+      return data;
+    }
   },
 
   /**
@@ -373,3 +500,4 @@ export const bookingService = {
     );
   }
 };
+

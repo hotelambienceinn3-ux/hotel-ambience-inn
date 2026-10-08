@@ -360,6 +360,29 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  /**
+   * ADMIN: Update Payment Status in Supabase ('pending', 'paid')
+   */
+  const updatePaymentStatusAdmin = async (bookingFullId, newPaymentStatus) => {
+    if (user?.role !== 'admin') {
+      showToast("Unauthorized: Administrative role required.", "error");
+      return false;
+    }
+
+    try {
+      await bookingService.updatePaymentStatusAdmin(bookingFullId, newPaymentStatus);
+      showToast(`Payment status updated to ${newPaymentStatus}.`, "success");
+      await loadAdminData();
+      if (user?.id) {
+        await loadUserBookings(user.id);
+      }
+      return true;
+    } catch (err) {
+      showToast(err.message || "Unable to update payment status.", "error");
+      return false;
+    }
+  };
+
   // REAL SUPABASE BOOKING CREATION FOR CUSTOMERS
   const createBooking = async (bookingData) => {
     if (!user) {
@@ -383,12 +406,15 @@ export const AppProvider = ({ children }) => {
         checkOut: bookingData.checkOut || searchCriteria.checkOut,
         guestsCount,
         specialRequest: bookingData.specialRequests || '',
-        guestInfo: bookingData.guestName ? [{ full_name: bookingData.guestName }] : []
+        guestInfo: bookingData.guestName ? [{ full_name: bookingData.guestName }] : [],
+        paymentMethod: bookingData.paymentMethod || 'Pay at Hotel',
+        totalPrice: bookingData.totalPrice,
+        subtotalPrice: bookingData.subtotal
       });
 
       const roomTypeInfo = newBookingRecord.rooms?.room_types;
       const formattedBooking = {
-        id: newBookingRecord.id.slice(0, 8).toUpperCase(),
+        id: newBookingRecord.formattedRefId || `HAI-${new Date().getFullYear()}-${newBookingRecord.id.slice(0, 5).toUpperCase()}`,
         fullId: newBookingRecord.id,
         roomTitle: roomTypeInfo?.name || targetRoom.title,
         roomCategory: targetRoom.category,
@@ -400,9 +426,10 @@ export const AppProvider = ({ children }) => {
         checkOut: newBookingRecord.check_out,
         guests: `${newBookingRecord.guests} Guests`,
         nights: bookingData.nights || 3,
-        totalPrice: Number(newBookingRecord.total) || bookingData.totalPrice || 0,
-        subtotal: Number(newBookingRecord.subtotal) || 0,
-        paymentMethod: bookingData.paymentMethod || 'Pay at Hotel',
+        totalPrice: Number(newBookingRecord.total_amount || newBookingRecord.subtotal || bookingData.totalPrice || 0),
+        subtotal: Number(newBookingRecord.subtotal || 0),
+        paymentMethod: 'Pay Upon Arrival at Hotel',
+        paymentStatus: 'Pending / Pay at Hotel',
         status: 'Confirmed'
       };
 
@@ -412,14 +439,16 @@ export const AppProvider = ({ children }) => {
       // Re-calculate room availability
       searchAvailability(bookingData.checkIn, bookingData.checkOut);
 
+      // Fetch user bookings immediately
       if (user?.id) {
         await loadUserBookings(user.id);
       }
+      // Always load admin data if user is admin
       if (user?.role === 'admin') {
         await loadAdminData();
       }
 
-      showToast("Reservation created successfully!", "success");
+      showToast("Reservation created & confirmed successfully!", "success");
       navigate('confirmation');
       return true;
     } catch (err) {
@@ -589,6 +618,7 @@ export const AppProvider = ({ children }) => {
         adminCustomers,
         adminCustomersLoading,
         updateBookingStatusAdmin,
+        updatePaymentStatusAdmin,
         latestBooking,
         createBooking,
         cancelBooking,

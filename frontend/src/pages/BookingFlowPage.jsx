@@ -125,6 +125,7 @@ export const BookingFlowPage = () => {
         guestPhone,
         specialRequests,
         totalPrice: grandTotal,
+        subtotal: roomTotal + breakfastTotal + transferTotal,
         paymentMethod,
         guestInfo: [
           {

@@ -15,6 +15,7 @@ export const AdminDashboardPage = () => {
     adminBookings,
     adminBookingsLoading,
     updateBookingStatusAdmin,
+    updatePaymentStatusAdmin,
     adminCustomers,
     offers,
     addOffer,
@@ -449,28 +450,49 @@ export const AdminDashboardPage = () => {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-surface-container-low border-b border-surface-container text-on-surface-variant uppercase font-bold text-[10px] tracking-wider">
                     <tr>
-                      <th className="py-3.5 px-6">Booking Ref</th>
-                      <th className="py-3.5 px-6">Guest Info</th>
-                      <th className="py-3.5 px-6">Room Type</th>
-                      <th className="py-3.5 px-6">Stay Dates</th>
-                      <th className="py-3.5 px-6">Amount</th>
-                      <th className="py-3.5 px-6">Status</th>
-                      <th className="py-3.5 px-6 text-right">Actions</th>
+                      <th className="py-3.5 px-4">Booking Ref</th>
+                      <th className="py-3.5 px-4">Guest Info</th>
+                      <th className="py-3.5 px-4">Room & Stay</th>
+                      <th className="py-3.5 px-4">Financials</th>
+                      <th className="py-3.5 px-4">Payment Info</th>
+                      <th className="py-3.5 px-4">Booking Status</th>
+                      <th className="py-3.5 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-surface-container font-medium text-on-surface">
                     {filteredBookings.length > 0 ? (
                       filteredBookings.map((b) => (
                         <tr key={b.fullId || b.id} className="hover:bg-surface-container-low/50 transition-colors">
-                          <td className="py-4 px-6 font-mono font-bold text-primary">{b.id}</td>
-                          <td className="py-4 px-6">
-                            <div className="font-bold">{b.guestName}</div>
-                            <div className="text-[10px] text-on-surface-variant">{b.guestPhone || b.guestEmail}</div>
+                          <td className="py-4 px-4 font-mono font-bold text-primary">
+                            <div>{b.id}</div>
+                            <div className="text-[10px] text-on-surface-variant font-normal">{b.createdAt}</div>
                           </td>
-                          <td className="py-4 px-6 font-semibold">{b.roomTitle} {b.roomNumber ? `(#${b.roomNumber})` : ''}</td>
-                          <td className="py-4 px-6 text-[11px]">{b.checkIn} to {b.checkOut}</td>
-                          <td className="py-4 px-6 font-serif font-bold text-sm">₹{b.totalPrice?.toLocaleString()}</td>
-                          <td className="py-4 px-6">
+                          <td className="py-4 px-4">
+                            <div className="font-bold text-on-surface">{b.guestName}</div>
+                            <div className="text-[10px] text-on-surface-variant">{b.guestEmail}</div>
+                            <div className="text-[10px] text-on-surface-variant">{b.guestPhone}</div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <div className="font-bold text-on-surface">{b.roomTitle} {b.roomNumber ? `(#${b.roomNumber})` : ''}</div>
+                            <div className="text-[11px] text-on-surface-variant">{b.checkIn} → {b.checkOut}</div>
+                            <div className="text-[10px] text-on-surface-variant">{b.guests}</div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <div className="font-serif font-bold text-sm text-primary">₹{b.totalPrice?.toLocaleString()}</div>
+                            <div className="text-[10px] text-emerald-800">Paid: ₹{(b.amountPaid || 0).toLocaleString()}</div>
+                            <div className="text-[10px] text-amber-800">Pending: ₹{(b.amountPending || 0).toLocaleString()}</div>
+                          </td>
+                          <td className="py-4 px-4">
+                            <div className="text-xs font-semibold text-on-surface">{b.paymentMethod || 'Pay Upon Arrival'}</div>
+                            <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                              b.paymentStatus === 'Paid' || b.rawPaymentStatus === 'paid'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {b.paymentStatus || 'Pending'}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4">
                             <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase ${
                               b.status === 'Confirmed' ? 'bg-blue-100 text-blue-800' :
                               b.status === 'Checked-In' ? 'bg-emerald-100 text-emerald-800' :
@@ -479,8 +501,18 @@ export const AdminDashboardPage = () => {
                               {b.status}
                             </span>
                           </td>
-                          <td className="py-4 px-6 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
+                          <td className="py-4 px-4 text-right">
+                            <div className="flex flex-col items-end gap-1.5">
+                              {b.paymentStatus !== 'Paid' && b.rawPaymentStatus !== 'paid' && (
+                                <button
+                                  onClick={() => updatePaymentStatusAdmin(b.fullId || b.id, 'paid')}
+                                  className="px-2.5 py-1 bg-emerald-600 text-white rounded text-[10px] font-bold uppercase hover:bg-emerald-700 shadow-xs flex items-center gap-1"
+                                  title="Mark Payment as Received at Front Desk"
+                                >
+                                  <span className="material-symbols-outlined text-[12px]">payments</span>
+                                  <span>Mark Paid</span>
+                                </button>
+                              )}
                               {b.status === 'Pending' && (
                                 <button onClick={() => updateBookingStatusAdmin(b.fullId || b.id, 'Confirmed')} className="px-2.5 py-1 bg-blue-700 text-white rounded text-[10px] font-bold uppercase hover:bg-blue-800">
                                   Confirm
