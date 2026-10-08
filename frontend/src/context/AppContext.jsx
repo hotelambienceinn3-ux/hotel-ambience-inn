@@ -471,6 +471,15 @@ export const AppProvider = ({ children }) => {
   };
 
   // AUTHENTICATION OPERATIONS
+  const loginWithGoogle = async () => {
+    try {
+      await authService.signInWithGoogle();
+    } catch (err) {
+      showToast(err.message || "Failed to sign in with Google.", "error");
+      throw err;
+    }
+  };
+
   const loginUser = async (email, password) => {
     try {
       const res = await authService.signIn(email, password);
@@ -641,6 +650,7 @@ export const AppProvider = ({ children }) => {
         authLoading,
         loginUser,
         signUpUser,
+        loginWithGoogle,
         resetPassword,
         logout,
         authFormKey,

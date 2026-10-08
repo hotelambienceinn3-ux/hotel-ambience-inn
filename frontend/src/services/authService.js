@@ -60,6 +60,24 @@ export const authService = {
   },
 
   /**
+   * Log in / Sign up with Google OAuth via Supabase
+   */
+  signInWithGoogle: async () => {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+
+    if (error) {
+      throw new Error(error.message || "Failed to sign in with Google.");
+    }
+
+    return data;
+  },
+
+  /**
    * Sign out the currently authenticated user
    */
   signOut: async () => {
