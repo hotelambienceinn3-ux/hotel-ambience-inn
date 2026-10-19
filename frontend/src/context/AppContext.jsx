@@ -5,6 +5,7 @@ import { bookingService } from '../services/bookingService';
 import { authService } from '../services/authService';
 import { supabase } from '../lib/supabaseClient';
 import { getDefaultStayDates, getTodayKolkata, getNextDayKolkata } from '../lib/dateUtils';
+import { isValidUuid } from '../lib/validationUtils';
 
 const AppContext = createContext();
 
@@ -613,16 +614,23 @@ export const AppProvider = ({ children }) => {
     try {
       if (!bookingIdentifier) return;
 
+      // Extract string ID from string or object
+      let targetUuid = typeof bookingIdentifier === 'string'
+        ? bookingIdentifier.trim()
+        : (bookingIdentifier?.fullId || bookingIdentifier?.id || '');
+
       // Resolve the actual database UUID (fullId) if a formatted reference (HAI-YYYY-XXXXX) was passed
-      let targetUuid = bookingIdentifier;
-      const match = (userBookings || []).find(
-        (b) => b.fullId === bookingIdentifier || b.id === bookingIdentifier
-      );
-      if (match?.fullId) {
-        targetUuid = match.fullId;
+      if (!isValidUuid(targetUuid)) {
+        const pool = [...(userBookings || []), ...(adminBookings || [])];
+        const match = pool.find(
+          (b) => b.fullId === bookingIdentifier || b.id === bookingIdentifier
+        );
+        if (match?.fullId && isValidUuid(match.fullId)) {
+          targetUuid = match.fullId;
+        }
       }
 
-      if (isUuid) {
+      if (isValidUuid(targetUuid)) {
         await bookingService.cancelBooking(targetUuid);
       } else {
         throw new Error("Invalid reservation identifier for cancellation.");

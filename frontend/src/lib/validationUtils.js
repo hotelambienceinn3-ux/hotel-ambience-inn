@@ -398,4 +398,16 @@ export const validateGuestForm = (formData) => {
   };
 };
 
+/**
+ * Validates whether a value is a valid UUID string (standard 8-4-4-4-12 hex format).
+ * 
+ * @param {*} value
+ * @returns {boolean}
+ */
+export const isValidUuid = (value) => {
+  if (typeof value !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value.trim());
+};
+
 export { validateStayDates, getTodayKolkata };
+

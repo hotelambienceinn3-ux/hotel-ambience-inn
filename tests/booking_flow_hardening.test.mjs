@@ -20,7 +20,8 @@ import {
   validateAge,
   validateGender,
   validateSpecialRequests,
-  validateGuestForm
+  validateGuestForm,
+  isValidUuid
 } from '../frontend/src/lib/validationUtils.js';
 
 let passedTests = 0;
@@ -969,6 +970,16 @@ assert(
   resolveBookingTargetId('11111111-2222-3333-4444-555555555555', mockUserBookings) === '11111111-2222-3333-4444-555555555555',
   'Frontend preserves database UUID if fullId is already provided'
 );
+
+// 15.7 Dedicated UUID validation helper tests
+assert(isValidUuid('c87b1c41-2a91-4993-9c59-111122223333'), 'Valid lowercase UUID passes isValidUuid');
+assert(isValidUuid('C87B1C41-2A91-4993-9C59-111122223333'), 'Valid uppercase UUID passes isValidUuid');
+assert(!isValidUuid('HAI-2026-ABCDE'), 'Formatted reference ID HAI-2026-ABCDE is rejected by isValidUuid');
+assert(!isValidUuid('invalid-uuid-string'), 'Arbitrary text is rejected by isValidUuid');
+assert(!isValidUuid(null), 'null is rejected by isValidUuid');
+assert(!isValidUuid(undefined), 'undefined is rejected by isValidUuid');
+assert(!isValidUuid(123456), 'Number is rejected by isValidUuid');
+assert(!isValidUuid({ id: '123' }), 'Object is rejected by isValidUuid');
 
 console.log('\n===============================================================');
 console.log('TEST SUITE 16: Guest Contact Persistence & Backward Compatibility');
