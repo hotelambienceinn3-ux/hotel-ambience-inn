@@ -259,8 +259,8 @@ export const initialBookings = [
   {
     id: "HAI-89421",
     roomTitle: "Deluxe King Room",
-    guestName: "Sarthak Andhale",
-    guestEmail: "sarthak@example.com",
+    guestName: "Aarav Sharma",
+    guestEmail: "aarav.sharma@gmail.com",
     guestPhone: "+91 98765 12345",
     checkIn: "2026-10-15",
     checkOut: "2026-10-18",
@@ -289,8 +289,8 @@ export const initialBookings = [
 export const initialCustomers = [
   {
     id: "CUST-101",
-    name: "Sarthak Andhale",
-    email: "sarthak@example.com",
+    name: "Aarav Sharma",
+    email: "aarav.sharma@gmail.com",
     phone: "+91 98765 12345",
     totalBookings: 3,
     lastBookingDate: "2026-09-20",

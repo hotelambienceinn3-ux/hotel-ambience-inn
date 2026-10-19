@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { hotelInfo, amenitiesList, testimonials } from '../data/hotelData';
 import { getCanonicalRoomImages } from '../lib/roomImageUtils';
+import { getTodayKolkata, getNextDayKolkata, validateStayDates } from '../lib/dateUtils';
 
 export const HomePage = () => {
   const { navigate, openRoomDetails, startBooking, setSearchCriteria, searchAvailability, rooms, showToast } = useApp();
   const [activeRoomViewer, setActiveRoomViewer] = useState(null);
 
-  const [checkIn, setCheckIn] = useState('2026-10-15');
-  const [checkOut, setCheckOut] = useState('2026-10-18');
+  const todayKolkata = getTodayKolkata();
+  const [checkIn, setCheckIn] = useState(todayKolkata);
+  const [checkOut, setCheckOut] = useState(getNextDayKolkata(todayKolkata));
   const [guests, setGuests] = useState('2 Adults');
 
   const openRoomViewer = (room) => {
@@ -47,22 +49,55 @@ export const HomePage = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeRoomViewer]);
 
+  const handleCheckInChange = (newVal) => {
+    const currentToday = getTodayKolkata();
+    if (!newVal || newVal < currentToday) {
+      showToast('Past dates cannot be selected. Check-in must be today or a future date.', 'error');
+      setCheckIn(currentToday);
+      if (!checkOut || checkOut <= currentToday) {
+        setCheckOut(getNextDayKolkata(currentToday));
+      }
+      return;
+    }
+    setCheckIn(newVal);
+    if (!checkOut || checkOut <= newVal) {
+      setCheckOut(getNextDayKolkata(newVal));
+    }
+  };
+
+  const handleCheckOutChange = (newVal) => {
+    const minAllowedCheckOut = getNextDayKolkata(checkIn);
+    if (!newVal || newVal <= checkIn) {
+      showToast('Check-out date must be strictly after the check-in date.', 'error');
+      setCheckOut(minAllowedCheckOut);
+      return;
+    }
+    setCheckOut(newVal);
+  };
+
+  const handleCheckInBlur = () => {
+    const currentToday = getTodayKolkata();
+    if (!checkIn || checkIn < currentToday) {
+      setCheckIn(currentToday);
+      if (!checkOut || checkOut <= currentToday) {
+        setCheckOut(getNextDayKolkata(currentToday));
+      }
+    }
+  };
+
+  const handleCheckOutBlur = () => {
+    const minAllowedCheckOut = getNextDayKolkata(checkIn);
+    if (!checkOut || checkOut <= checkIn) {
+      setCheckOut(minAllowedCheckOut);
+    }
+  };
+
   const handleSearch = (e) => {
     e.preventDefault();
 
-    if (!checkIn || !checkOut) {
-      showToast('Please select both Check-In and Check-Out dates.', 'error');
-      return;
-    }
-
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (checkIn < todayStr) {
-      showToast('Check-In date cannot be in the past.', 'error');
-      return;
-    }
-
-    if (checkOut <= checkIn) {
-      showToast('Check-Out date must be after Check-In date.', 'error');
+    const datesRes = validateStayDates(checkIn, checkOut);
+    if (!datesRes.isValid) {
+      showToast(datesRes.error || 'Please select valid check-in and check-out dates.', 'error');
       return;
     }
 
@@ -157,9 +192,11 @@ export const HomePage = () => {
                 </label>
                 <input
                   type="date"
+                  min={todayKolkata}
                   value={checkIn}
-                  onChange={(e) => setCheckIn(e.target.value)}
-                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border border-surface-container text-sm font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                  onChange={(e) => handleCheckInChange(e.target.value)}
+                  onBlur={handleCheckInBlur}
+                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border border-surface-container text-sm font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                 />
               </div>
 
@@ -171,9 +208,11 @@ export const HomePage = () => {
                 </label>
                 <input
                   type="date"
+                  min={getNextDayKolkata(checkIn)}
                   value={checkOut}
-                  onChange={(e) => setCheckOut(e.target.value)}
-                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border border-surface-container text-sm font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                  onChange={(e) => handleCheckOutChange(e.target.value)}
+                  onBlur={handleCheckOutBlur}
+                  className="w-full h-12 px-4 rounded-xl bg-surface-container-low border border-surface-container text-sm font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                 />
               </div>
 

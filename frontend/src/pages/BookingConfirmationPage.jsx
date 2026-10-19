@@ -7,8 +7,8 @@ export const BookingConfirmationPage = () => {
   const booking = latestBooking || {
     id: "HAI-89421",
     roomTitle: "Deluxe King Room",
-    guestName: "Sarthak Andhale",
-    guestEmail: "sarthak@example.com",
+    guestName: "Aarav Sharma",
+    guestEmail: "aarav.sharma@gmail.com",
     checkIn: "2026-10-15",
     checkOut: "2026-10-18",
     guests: "2 Adults",

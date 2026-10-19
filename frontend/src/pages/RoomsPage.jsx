@@ -174,8 +174,10 @@ export const RoomsPage = () => {
           <div className="space-y-8">
             {filteredRooms.length > 0 ? (
               filteredRooms.map((room) => {
-                const roomAvail = availability[room.id] || { availableCount: 3, totalRooms: 3 };
-                const isAvailable = roomAvail.availableCount > 0;
+                const roomAvail = availability[room.id];
+                const isAvailable = Boolean(roomAvail && roomAvail.availableCount > 0);
+                const availableCount = roomAvail?.availableCount ?? 0;
+                const totalRooms = roomAvail?.totalRooms ?? 0;
                 const canonicalImages = getCanonicalRoomImages(room);
                 const primaryImg = canonicalImages[0];
 
@@ -207,14 +209,14 @@ export const RoomsPage = () => {
                           </span>
                           <div className="flex items-center gap-2">
                             {isCheckingAvailability ? (
-                              <span className="text-[10px] text-on-surface-variant animate-pulse">Checking availability...</span>
+                              <span className="text-[10px] text-on-surface-variant animate-pulse">Checking live availability...</span>
                             ) : isAvailable ? (
                               <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase rounded">
-                                ✓ {roomAvail.availableCount} {roomAvail.availableCount === 1 ? 'room' : 'rooms'} available
+                                ✓ {availableCount} of {totalRooms} {totalRooms === 1 ? 'room' : 'rooms'} available
                               </span>
                             ) : (
                               <span className="px-2 py-0.5 bg-red-100 text-error text-[10px] font-bold uppercase rounded">
-                                Currently unavailable for selected dates
+                                Fully booked for selected dates
                               </span>
                             )}
                           </div>

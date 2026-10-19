@@ -33,8 +33,8 @@ export const RoomDetailsModal = () => {
   if (!selectedRoomForDetails) return null;
 
   const room = selectedRoomForDetails;
-  const roomAvail = (room.id && availability[room.id]) || { availableCount: 3 };
-  const isAvailable = roomAvail.availableCount > 0;
+  const roomAvail = room?.id ? availability[room.id] : null;
+  const isAvailable = Boolean(roomAvail && roomAvail.availableCount > 0);
 
   // Resolve room images safely using canonical local images map
   const roomImages = getCanonicalRoomImages(room);
@@ -142,11 +142,11 @@ export const RoomDetailsModal = () => {
               <div className="absolute top-3 right-3">
                 {isAvailable ? (
                   <span className="px-3 py-1 bg-emerald-600 text-white text-[11px] font-bold uppercase rounded-md shadow-md inline-block">
-                    ✓ Available
+                    ✓ Available ({roomAvail.availableCount} {roomAvail.availableCount === 1 ? 'room' : 'rooms'})
                   </span>
                 ) : (
                   <span className="px-3 py-1 bg-red-600 text-white text-[11px] font-bold uppercase rounded-md shadow-md inline-block">
-                    Unavailable
+                    Unavailable for Selected Dates
                   </span>
                 )}
               </div>

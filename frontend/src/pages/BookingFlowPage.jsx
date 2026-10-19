@@ -1,5 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import {
+  getTodayKolkata,
+  getNextDayKolkata,
+  calculateNights,
+  validateStayDates
+} from '../lib/dateUtils';
+import {
+  validateFullName,
+  validateGmail,
+  validateIndianPhone,
+  validateAge,
+  validateGender,
+  validateSpecialRequests,
+  validateGuestForm
+} from '../lib/validationUtils';
 
 export const BookingFlowPage = () => {
   const {
@@ -9,9 +24,9 @@ export const BookingFlowPage = () => {
     user,
     rooms,
     searchCriteria,
-    setSearchCriteria,
     availability,
     isCheckingAvailability,
+    availabilityError,
     searchAvailability,
     showToast
   } = useApp();
@@ -23,31 +38,44 @@ export const BookingFlowPage = () => {
   // Selected room (defaults to first room if none selected)
   const currentRoom = selectedRoomForBooking || rooms[0] || {};
 
-  // Stay details initialized from search criteria
-  const [checkIn, setCheckIn] = useState(searchCriteria.checkIn || '2026-10-15');
-  const [checkOut, setCheckOut] = useState(searchCriteria.checkOut || '2026-10-18');
+  // Timezone-aware today in Asia/Kolkata
+  const todayKolkata = getTodayKolkata();
+  const minCheckIn = todayKolkata;
+
+  // Stay details initialized from search criteria (guaranteed >= today in Asia/Kolkata)
+  const [checkIn, setCheckIn] = useState(
+    searchCriteria.checkIn && searchCriteria.checkIn >= todayKolkata
+      ? searchCriteria.checkIn
+      : todayKolkata
+  );
+  const [checkOut, setCheckOut] = useState(
+    searchCriteria.checkOut && searchCriteria.checkOut > (searchCriteria.checkIn || todayKolkata)
+      ? searchCriteria.checkOut
+      : getNextDayKolkata(checkIn || todayKolkata)
+  );
   const [guests, setGuests] = useState(searchCriteria.guests || '2 Adults');
 
-  // Sync date selection with availability calculation
+  // Minimum selectable check-out date is strictly later than check-in
+  const minCheckOut = getNextDayKolkata(checkIn);
+
+  // Sync date selection with real availability calculation
   useEffect(() => {
     if (checkIn && checkOut) {
       searchAvailability(checkIn, checkOut);
     }
   }, [checkIn, checkOut]);
 
-  // Addons
-  const [addons, setAddons] = useState({
-    breakfast: true,
-    airportTransfer: false
-  });
-
-  // Guest Info
+  // Guest Information state (no dummy/fake phone or age defaults)
   const [guestName, setGuestName] = useState(user?.name || user?.full_name || '');
   const [guestEmail, setGuestEmail] = useState(user?.email || '');
-  const [guestPhone, setGuestPhone] = useState(user?.phone || '+91 98765 43210');
-  const [guestAge, setGuestAge] = useState('28');
+  const [guestPhone, setGuestPhone] = useState(user?.phone || '');
+  const [guestAge, setGuestAge] = useState('');
   const [guestGender, setGuestGender] = useState('Male');
   const [specialRequests, setSpecialRequests] = useState('');
+
+  // Form Validation & Touched state
+  const [errors, setErrors] = useState({});
+  const [touched, setTouched] = useState({});
 
   // Payment method
   const [paymentMethod, setPaymentMethod] = useState('Pay at Hotel');
@@ -61,54 +89,238 @@ export const BookingFlowPage = () => {
     }
   }, [user]);
 
-  // Night calculation
-  const calculateNights = () => {
-    const d1 = new Date(checkIn);
-    const d2 = new Date(checkOut);
-    if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return 1;
-    const diff = Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 3600 * 24));
-    return diff > 0 ? diff : 1;
+  // Date validation check
+  const dateValidation = validateStayDates(checkIn, checkOut);
+  const nights = dateValidation.isValid ? dateValidation.nights : calculateNights(checkIn, checkOut);
+
+  // Pricing calculations (add-ons completely removed; tax included/zero)
+  const pricePerNight = Number(currentRoom.price) || Number(currentRoom.base_price) || 2000;
+  const roomTotal = pricePerNight * nights;
+  const tax = 0;
+  const grandTotal = roomTotal + tax;
+
+  // Real room availability from Supabase (no mock fallbacks)
+  const roomAvail = currentRoom?.id ? availability[currentRoom.id] : null;
+  const isAvailable = Boolean(roomAvail && roomAvail.availableCount > 0);
+  const availableCount = roomAvail?.availableCount ?? 0;
+  const totalCount = roomAvail?.totalRooms ?? 0;
+
+  // Find available alternative room categories when the selected room is unavailable
+  const availableAlternatives = rooms.filter(
+    (r) => r.id !== currentRoom.id && Boolean(availability[r.id]?.availableCount > 0)
+  );
+
+  // Handle Check-In date change with automatic Check-Out invalidation/adjustment
+  const handleCheckInChange = (newCheckIn) => {
+    const currentToday = getTodayKolkata();
+    if (!newCheckIn || newCheckIn < currentToday) {
+      showToast('Past dates cannot be selected. Check-in must be today or a future date.', 'error');
+      setCheckIn(currentToday);
+      if (!checkOut || checkOut <= currentToday) {
+        setCheckOut(getNextDayKolkata(currentToday));
+      }
+      return;
+    }
+
+    setCheckIn(newCheckIn);
+
+    // If checkout is prior to or equal to new checkIn, automatically adjust checkout
+    if (!checkOut || checkOut <= newCheckIn) {
+      const adjustedCheckOut = getNextDayKolkata(newCheckIn);
+      setCheckOut(adjustedCheckOut);
+      showToast('Check-out date was adjusted to follow your new check-in date.', 'info');
+    }
   };
 
-  const nights = calculateNights();
-  const pricePerNight = Number(currentRoom.price) || Number(currentRoom.base_price) || 2500;
-  const roomTotal = pricePerNight * nights;
-  const breakfastTotal = addons.breakfast ? 450 * nights * 2 : 0;
-  const transferTotal = addons.airportTransfer ? 1200 : 0;
-  const tax = 0; // Tax is 0 for now as per configuration
-  const grandTotal = roomTotal + breakfastTotal + transferTotal + tax;
+  // Handle Check-Out date change
+  const handleCheckOutChange = (newCheckOut) => {
+    const minAllowedCheckOut = getNextDayKolkata(checkIn);
+    if (!newCheckOut || newCheckOut <= checkIn) {
+      showToast('Check-out date must be strictly after the check-in date.', 'error');
+      setCheckOut(minAllowedCheckOut);
+      return;
+    }
+    setCheckOut(newCheckOut);
+  };
 
-  // Real room availability for current room
-  const roomAvail = availability[currentRoom.id] || { availableCount: 3 };
-  const isAvailable = roomAvail.availableCount > 0;
+  const handleCheckInBlur = () => {
+    const currentToday = getTodayKolkata();
+    if (!checkIn || checkIn < currentToday) {
+      setCheckIn(currentToday);
+      if (!checkOut || checkOut <= currentToday) {
+        setCheckOut(getNextDayKolkata(currentToday));
+      }
+    }
+  };
 
-  // Step 1 validation & proceed
+  const handleCheckOutBlur = () => {
+    const minAllowedCheckOut = getNextDayKolkata(checkIn);
+    if (!checkOut || checkOut <= checkIn) {
+      setCheckOut(minAllowedCheckOut);
+    }
+  };
+
+  // Live Field-specific validator on blur/change
+  const validateSingleField = (field, value) => {
+    let fieldErr = null;
+    if (field === 'guestName') {
+      const res = validateFullName(value);
+      if (!res.isValid) fieldErr = res.error;
+    } else if (field === 'guestEmail') {
+      const res = validateGmail(value);
+      if (!res.isValid) fieldErr = res.error;
+    } else if (field === 'guestPhone') {
+      const res = validateIndianPhone(value);
+      if (!res.isValid) fieldErr = res.error;
+    } else if (field === 'guestAge') {
+      const res = validateAge(value);
+      if (!res.isValid) fieldErr = res.error;
+    } else if (field === 'guestGender') {
+      const res = validateGender(value);
+      if (!res.isValid) fieldErr = res.error;
+    } else if (field === 'specialRequests') {
+      const res = validateSpecialRequests(value);
+      if (!res.isValid) fieldErr = res.error;
+    }
+
+    setErrors((prev) => {
+      const updated = { ...prev };
+      if (fieldErr) {
+        updated[field] = fieldErr;
+      } else {
+        delete updated[field];
+      }
+      return updated;
+    });
+
+    return !fieldErr;
+  };
+
+  const handleFieldBlur = (field, value) => {
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    validateSingleField(field, value);
+  };
+
+  const handleFieldChange = (field, value, setter) => {
+    setter(value);
+    if (touched[field]) {
+      validateSingleField(field, value);
+    }
+  };
+
+  // Step 1: Validate stay dates and live availability before proceeding
   const handleProceedToStep2 = () => {
-    if (!checkIn || !checkOut) {
-      showToast('Please select both Check-In and Check-Out dates.', 'error');
+    const datesRes = validateStayDates(checkIn, checkOut);
+    if (!datesRes.isValid) {
+      showToast(datesRes.error || 'Please select valid check-in and check-out dates.', 'error');
       return;
     }
-    const todayStr = new Date().toISOString().split('T')[0];
-    if (checkIn < todayStr) {
-      showToast('Check-In date cannot be in the past.', 'error');
-      return;
-    }
-    if (checkOut <= checkIn) {
-      showToast('Check-Out date must be after Check-In date.', 'error');
-      return;
-    }
+
     if (!isAvailable) {
-      showToast('Selected room is not available for these dates. Please choose different dates or another room.', 'error');
+      showToast(
+        'The selected room is not available for these dates. Please choose an available alternative or change dates.',
+        'error'
+      );
       return;
     }
+
     setStep(2);
   };
 
-  // Submit Booking handler
+  // Step 2: Validate Primary Guest form fields before proceeding to payment
+  const handleProceedToStep3 = () => {
+    setTouched({
+      guestName: true,
+      guestEmail: true,
+      guestPhone: true,
+      guestAge: true,
+      guestGender: true,
+      specialRequests: true
+    });
+
+    const formValidation = validateGuestForm({
+      guestName,
+      guestEmail,
+      guestPhone,
+      guestAge,
+      guestGender,
+      specialRequests
+    });
+
+    if (!formValidation.isValid) {
+      setErrors(formValidation.errors);
+      const missingFields = [];
+      if (formValidation.errors.guestName) missingFields.push('Full Name');
+      if (formValidation.errors.guestEmail) missingFields.push('Gmail Address');
+      if (formValidation.errors.guestPhone) missingFields.push('Mobile Phone');
+      if (formValidation.errors.guestAge) missingFields.push('Age');
+      if (formValidation.errors.specialRequests) missingFields.push('Special Requests');
+
+      showToast(`Please correct: ${missingFields.join(', ')}. (Special Requests is optional).`, 'error');
+      return;
+    }
+
+    // Apply normalized values (trimmed & standardized)
+    if (formValidation.normalized.guestName) setGuestName(formValidation.normalized.guestName);
+    if (formValidation.normalized.guestEmail) setGuestEmail(formValidation.normalized.guestEmail);
+    if (formValidation.normalized.guestPhone) setGuestPhone(formValidation.normalized.guestPhone);
+
+    setErrors({});
+    setStep(3);
+  };
+
+  // Final Step 3: Complete Booking Submission
   const handleSubmitBooking = async (e) => {
     e.preventDefault();
-    if (!guestName || !guestEmail) {
-      showToast('Please provide primary guest name and email address.', 'error');
+    if (submitting) return;
+
+    // 1. Guard stay dates
+    const datesRes = validateStayDates(checkIn, checkOut);
+    if (!datesRes.isValid) {
+      showToast(datesRes.error, 'error');
+      setStep(1);
+      return;
+    }
+
+    // 2. Guard guest info
+    const formValidation = validateGuestForm({
+      guestName,
+      guestEmail,
+      guestPhone,
+      guestAge,
+      guestGender,
+      specialRequests
+    });
+
+    if (!formValidation.isValid) {
+      setErrors(formValidation.errors);
+      setTouched({
+        guestName: true,
+        guestEmail: true,
+        guestPhone: true,
+        guestAge: true,
+        guestGender: true,
+        specialRequests: true
+      });
+      const missingFields = [];
+      if (formValidation.errors.guestName) missingFields.push('Full Name');
+      if (formValidation.errors.guestEmail) missingFields.push('Gmail Address');
+      if (formValidation.errors.guestPhone) missingFields.push('Mobile Phone');
+      if (formValidation.errors.guestAge) missingFields.push('Age');
+      if (formValidation.errors.specialRequests) missingFields.push('Special Requests');
+
+      showToast(`Please check required details: ${missingFields.join(', ')}.`, 'error');
+      setStep(2);
+      return;
+    }
+
+    // 3. Guard real-time availability
+    if (!isAvailable) {
+      showToast(
+        'Sorry, availability changed or the selected room is no longer available for these dates. Please review the options.',
+        'error'
+      );
+      setStep(1);
       return;
     }
 
@@ -120,23 +332,16 @@ export const BookingFlowPage = () => {
         checkOut,
         guests,
         nights,
-        guestName,
-        guestEmail,
-        guestPhone,
-        specialRequests,
-        totalPrice: grandTotal,
-        subtotal: roomTotal + breakfastTotal + transferTotal,
-        paymentMethod,
-        guestInfo: [
-          {
-            full_name: guestName,
-            age: guestAge,
-            gender: guestGender
-          }
-        ]
+        guestName: formValidation.normalized.guestName,
+        guestEmail: formValidation.normalized.guestEmail,
+        guestPhone: formValidation.normalized.guestPhone,
+        guestAge: formValidation.normalized.guestAge,
+        guestGender: formValidation.normalized.guestGender,
+        specialRequests: formValidation.normalized.specialRequests,
+        paymentMethod
       });
     } catch (err) {
-      // Error handling is surfaced via toast in AppContext
+      // Handled via toast in AppContext
     } finally {
       setSubmitting(false);
     }
@@ -173,7 +378,11 @@ export const BookingFlowPage = () => {
               >
                 {step > s.num ? '✓' : s.num}
               </div>
-              <span className={`text-xs font-semibold hidden sm:inline-block ${step >= s.num ? 'text-on-surface' : 'text-on-surface-variant'}`}>
+              <span
+                className={`text-xs font-semibold hidden sm:inline-block ${
+                  step >= s.num ? 'text-on-surface' : 'text-on-surface-variant'
+                }`}
+              >
                 {s.label}
               </span>
             </div>
@@ -186,16 +395,23 @@ export const BookingFlowPage = () => {
             type="button"
             onClick={() => setMobileSummaryOpen(!mobileSummaryOpen)}
             className="w-full p-4 flex items-center justify-between text-left bg-surface-container-low"
+            aria-expanded={mobileSummaryOpen}
           >
             <div className="flex items-center gap-3">
               <span className="material-symbols-outlined text-primary text-xl">receipt_long</span>
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-primary block">Reservation Summary</span>
-                <span className="font-serif font-bold text-sm text-on-surface">{currentRoom.title || 'Room Selected'}</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-primary block">
+                  Reservation Summary
+                </span>
+                <span className="font-serif font-bold text-sm text-on-surface">
+                  {currentRoom.title || 'Room Selected'}
+                </span>
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <span className="font-serif font-bold text-base text-primary">₹{grandTotal.toLocaleString()}</span>
+              <span className="font-serif font-bold text-base text-primary">
+                ₹{grandTotal.toLocaleString()}
+              </span>
               <span className="material-symbols-outlined text-on-surface-variant">
                 {mobileSummaryOpen ? 'expand_less' : 'expand_more'}
               </span>
@@ -204,12 +420,28 @@ export const BookingFlowPage = () => {
           {mobileSummaryOpen && (
             <div className="p-4 border-t border-surface-container space-y-3.5 animate-in fade-in">
               <div className="space-y-2 text-xs text-on-surface-variant">
-                <div className="flex justify-between"><span>Stay Dates:</span><span className="font-bold text-on-surface">{checkIn} to {checkOut} ({nights} {nights === 1 ? 'night' : 'nights'})</span></div>
-                <div className="flex justify-between"><span>Occupancy:</span><span className="font-bold text-on-surface">{guests}</span></div>
-                <div className="flex justify-between"><span>Room Rate:</span><span>₹{pricePerNight.toLocaleString()} / night</span></div>
-                <div className="flex justify-between"><span>Subtotal:</span><span>₹{roomTotal.toLocaleString()}</span></div>
-                {addons.breakfast && <div className="flex justify-between text-secondary font-semibold"><span>Breakfast Buffet:</span><span>+₹{breakfastTotal.toLocaleString()}</span></div>}
-                {addons.airportTransfer && <div className="flex justify-between text-secondary font-semibold"><span>Airport Transfer:</span><span>+₹{transferTotal.toLocaleString()}</span></div>}
+                <div className="flex justify-between">
+                  <span>Stay Dates:</span>
+                  <span className="font-bold text-on-surface">
+                    {checkIn} to {checkOut} ({nights} {nights === 1 ? 'night' : 'nights'})
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Occupancy:</span>
+                  <span className="font-bold text-on-surface">{guests}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Room Rate:</span>
+                  <span>₹{pricePerNight.toLocaleString()} / night</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Subtotal:</span>
+                  <span className="font-bold text-on-surface">₹{roomTotal.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Taxes & Fees:</span>
+                  <span>₹0 (Included)</span>
+                </div>
               </div>
             </div>
           )}
@@ -230,13 +462,14 @@ export const BookingFlowPage = () => {
 
                 {/* Room Selector */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
+                  <label htmlFor="room-type-select" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-2">
                     Room Type Selection
                   </label>
                   <select
+                    id="room-type-select"
                     value={currentRoom.id || ''}
                     onChange={(e) => {
-                      const selected = rooms.find(r => r.id === e.target.value);
+                      const selected = rooms.find((r) => r.id === e.target.value);
                       if (selected) setSelectedRoomForBooking(selected);
                     }}
                     className="w-full px-4 py-3 bg-surface-container-low border border-surface-container rounded-xl text-sm font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary cursor-pointer"
@@ -252,39 +485,52 @@ export const BookingFlowPage = () => {
                 {/* Dates & Guests */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                    <label htmlFor="booking-checkin" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
                       Check-In Date *
                     </label>
                     <input
+                      id="booking-checkin"
                       type="date"
                       required
+                      min={minCheckIn}
                       value={checkIn}
-                      onChange={(e) => setCheckIn(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                      onChange={(e) => handleCheckInChange(e.target.value)}
+                      onBlur={handleCheckInBlur}
+                      className="w-full px-3.5 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                     />
+                    <span className="text-[10px] text-on-surface-variant mt-1 block">
+                      Earliest: Today ({todayKolkata})
+                    </span>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                    <label htmlFor="booking-checkout" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
                       Check-Out Date *
                     </label>
                     <input
+                      id="booking-checkout"
                       type="date"
                       required
+                      min={minCheckOut}
                       value={checkOut}
-                      onChange={(e) => setCheckOut(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                      onChange={(e) => handleCheckOutChange(e.target.value)}
+                      onBlur={handleCheckOutBlur}
+                      className="w-full px-3.5 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                     />
+                    <span className="text-[10px] text-on-surface-variant mt-1 block">
+                      Duration: {nights} {nights === 1 ? 'Night' : 'Nights'}
+                    </span>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                    <label htmlFor="booking-guests" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
                       Guests *
                     </label>
                     <select
+                      id="booking-guests"
                       value={guests}
                       onChange={(e) => setGuests(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                      className="w-full px-3.5 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                     >
                       <option value="1 Adult">1 Adult</option>
                       <option value="2 Adults">2 Adults</option>
@@ -295,65 +541,102 @@ export const BookingFlowPage = () => {
                 </div>
 
                 {/* Real Availability Indicator */}
-                <div className="p-3.5 bg-surface-container-low rounded-xl border border-surface-container flex items-center justify-between text-xs">
+                <div className="p-3.5 bg-surface-container-low rounded-xl border border-surface-container flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                   <span className="font-medium text-on-surface-variant">Live Room Availability:</span>
                   {isCheckingAvailability ? (
-                    <span className="text-on-surface-variant font-medium animate-pulse">Calculating dates...</span>
+                    <span className="text-on-surface-variant font-medium animate-pulse flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-primary animate-ping"></span>
+                      Checking live inventory...
+                    </span>
+                  ) : availabilityError ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-error font-semibold">Could not verify availability</span>
+                      <button
+                        type="button"
+                        onClick={() => searchAvailability(checkIn, checkOut)}
+                        className="text-primary font-bold underline hover:no-underline text-xs"
+                      >
+                        Retry
+                      </button>
+                    </div>
                   ) : isAvailable ? (
-                    <span className="font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded">
-                      ✓ {roomAvail.availableCount} {roomAvail.availableCount === 1 ? 'room' : 'rooms'} available for these dates
+                    <span className="font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded inline-flex items-center gap-1">
+                      <span>✓</span>
+                      <span>
+                        {availableCount} of {totalCount} {totalCount === 1 ? 'room' : 'rooms'} available for these dates
+                      </span>
                     </span>
                   ) : (
-                    <span className="font-bold text-error bg-red-100 px-2.5 py-1 rounded">
-                      ✕ Not available for selected dates
+                    <span className="font-bold text-error bg-red-100 px-2.5 py-1 rounded inline-flex items-center gap-1">
+                      <span>✕</span>
+                      <span>Not available for selected dates</span>
                     </span>
                   )}
                 </div>
 
-                {/* Add-ons Checklist */}
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-3">
-                    Enhance Your Stay (Optional Add-ons)
-                  </label>
-                  <div className="space-y-3">
-                    <label className="flex items-center justify-between p-3.5 bg-surface-container-low rounded-xl border border-surface-container cursor-pointer hover:bg-surface-container transition-colors">
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={addons.breakfast}
-                          onChange={(e) => setAddons({ ...addons, breakfast: e.target.checked })}
-                          className="w-4 h-4 accent-primary"
-                        />
-                        <div>
-                          <span className="font-bold text-xs text-on-surface block">Daily Gourmet Breakfast Buffet</span>
-                          <span className="text-[11px] text-on-surface-variant">Hot spread at Saffron & Spice Restaurant</span>
-                        </div>
+                {/* Unavailable Room Notice & Alternative Room Recommendations */}
+                {!isCheckingAvailability && !isAvailable && (
+                  <div className="p-4 bg-amber-50/80 border border-amber-200/80 rounded-xl space-y-3">
+                    <div className="flex items-start gap-2.5">
+                      <span className="material-symbols-outlined text-amber-700 text-xl shrink-0 mt-0.5">
+                        event_busy
+                      </span>
+                      <div>
+                        <h4 className="font-bold text-xs text-amber-900 uppercase tracking-wide">
+                          {currentRoom.title} is Unavailable for Your Dates
+                        </h4>
+                        <p className="text-xs text-amber-800 mt-0.5">
+                          All rooms in this category are reserved for {checkIn} to {checkOut}.
+                          Please pick another category below or choose different stay dates.
+                        </p>
                       </div>
-                      <span className="text-xs font-bold text-primary">+₹450 / day</span>
-                    </label>
+                    </div>
 
-                    <label className="flex items-center justify-between p-3.5 bg-surface-container-low rounded-xl border border-surface-container cursor-pointer hover:bg-surface-container transition-colors">
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={addons.airportTransfer}
-                          onChange={(e) => setAddons({ ...addons, airportTransfer: e.target.checked })}
-                          className="w-4 h-4 accent-primary"
-                        />
-                        <div>
-                          <span className="font-bold text-xs text-on-surface block">Airport Chauffeur Transfer</span>
-                          <span className="text-[11px] text-on-surface-variant">Private luxury pickup from Pune Airport (PNQ)</span>
+                    {availableAlternatives.length > 0 ? (
+                      <div className="space-y-2 pt-2 border-t border-amber-200/60">
+                        <span className="text-[11px] font-bold uppercase tracking-wider text-amber-900 block">
+                          Available Alternative Rooms:
+                        </span>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {availableAlternatives.map((alt) => (
+                            <button
+                              key={alt.id}
+                              type="button"
+                              onClick={() => setSelectedRoomForBooking(alt)}
+                              className="flex items-center justify-between p-2.5 bg-white rounded-lg border border-amber-200 hover:border-primary hover:shadow-sm transition-all text-left group"
+                            >
+                              <div>
+                                <span className="font-bold text-xs text-on-surface block group-hover:text-primary transition-colors">
+                                  {alt.title}
+                                </span>
+                                <span className="text-[11px] text-emerald-700 font-semibold">
+                                  {availability[alt.id]?.availableCount} available • ₹{alt.price.toLocaleString()}/nt
+                                </span>
+                              </div>
+                              <span className="text-xs font-bold text-primary px-2.5 py-1 bg-primary/10 rounded-md shrink-0">
+                                Select →
+                              </span>
+                            </button>
+                          ))}
                         </div>
                       </div>
-                      <span className="text-xs font-bold text-primary">+₹1,200</span>
-                    </label>
+                    ) : (
+                      <p className="text-xs text-amber-900 font-medium">
+                        No rooms are available for these specific dates. Please try searching different dates.
+                      </p>
+                    )}
                   </div>
-                </div>
+                )}
 
                 <button
                   type="button"
                   onClick={handleProceedToStep2}
-                  className="w-full py-3.5 bg-primary text-on-primary font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-primary-container transition-all shadow-md mt-4"
+                  disabled={!isAvailable || isCheckingAvailability}
+                  className={`w-full py-3.5 font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md mt-4 ${
+                    isAvailable && !isCheckingAvailability
+                      ? 'bg-primary text-on-primary hover:bg-primary-container'
+                      : 'bg-surface-container text-on-surface-variant cursor-not-allowed opacity-60'
+                  }`}
                 >
                   Continue to Guest Info →
                 </button>
@@ -368,72 +651,128 @@ export const BookingFlowPage = () => {
                 </h3>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Full Name */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                    <label htmlFor="guest-fullname" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
                       Full Name *
                     </label>
                     <input
+                      id="guest-fullname"
                       type="text"
                       required
                       value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
-                      placeholder="e.g. Sarthak Andhale"
-                      className="w-full px-4 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                      onChange={(e) => handleFieldChange('guestName', e.target.value, setGuestName)}
+                      onBlur={(e) => handleFieldBlur('guestName', e.target.value)}
+                      placeholder="e.g. Aarav Sharma"
+                      aria-invalid={Boolean(errors.guestName)}
+                      aria-describedby={errors.guestName ? 'guestName-error' : undefined}
+                      className={`w-full px-4 py-2.5 bg-surface-container-low border rounded-xl text-xs font-semibold text-on-surface outline-none transition-colors focus:ring-1 focus:ring-primary ${
+                        errors.guestName ? 'border-error ring-1 ring-error/20 bg-error/5' : 'border-surface-container'
+                      }`}
                     />
+                    {errors.guestName && (
+                      <p id="guestName-error" role="alert" className="text-error text-[11px] mt-1 flex items-center gap-1 font-medium">
+                        <span className="material-symbols-outlined text-[13px]">error</span>
+                        {errors.guestName}
+                      </p>
+                    )}
                   </div>
 
+                  {/* Gmail Address */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
-                      Email Address *
+                    <label htmlFor="guest-email" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                      Email Address (Gmail Only) *
                     </label>
                     <input
+                      id="guest-email"
                       type="email"
                       required
                       value={guestEmail}
-                      onChange={(e) => setGuestEmail(e.target.value)}
-                      placeholder="name@example.com"
-                      className="w-full px-4 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                      onChange={(e) => handleFieldChange('guestEmail', e.target.value, setGuestEmail)}
+                      onBlur={(e) => handleFieldBlur('guestEmail', e.target.value)}
+                      placeholder="name@gmail.com"
+                      aria-invalid={Boolean(errors.guestEmail)}
+                      aria-describedby={errors.guestEmail ? 'guestEmail-error' : undefined}
+                      className={`w-full px-4 py-2.5 bg-surface-container-low border rounded-xl text-xs font-semibold text-on-surface outline-none transition-colors focus:ring-1 focus:ring-primary ${
+                        errors.guestEmail ? 'border-error ring-1 ring-error/20 bg-error/5' : 'border-surface-container'
+                      }`}
                     />
+                    {errors.guestEmail && (
+                      <p id="guestEmail-error" role="alert" className="text-error text-[11px] mt-1 flex items-center gap-1 font-medium">
+                        <span className="material-symbols-outlined text-[13px]">error</span>
+                        {errors.guestEmail}
+                      </p>
+                    )}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  {/* Mobile Phone */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
-                      Mobile Phone *
+                    <label htmlFor="guest-phone" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                      Mobile Phone (+91) *
                     </label>
                     <input
+                      id="guest-phone"
                       type="tel"
                       required
                       value={guestPhone}
-                      onChange={(e) => setGuestPhone(e.target.value)}
+                      onChange={(e) => handleFieldChange('guestPhone', e.target.value, setGuestPhone)}
+                      onBlur={(e) => handleFieldBlur('guestPhone', e.target.value)}
                       placeholder="+91 98765 43210"
-                      className="w-full px-4 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                      aria-invalid={Boolean(errors.guestPhone)}
+                      aria-describedby={errors.guestPhone ? 'guestPhone-error' : undefined}
+                      className={`w-full px-4 py-2.5 bg-surface-container-low border rounded-xl text-xs font-semibold text-on-surface outline-none transition-colors focus:ring-1 focus:ring-primary ${
+                        errors.guestPhone ? 'border-error ring-1 ring-error/20 bg-error/5' : 'border-surface-container'
+                      }`}
                     />
+                    {errors.guestPhone && (
+                      <p id="guestPhone-error" role="alert" className="text-error text-[11px] mt-1 flex items-center gap-1 font-medium">
+                        <span className="material-symbols-outlined text-[13px]">error</span>
+                        {errors.guestPhone}
+                      </p>
+                    )}
                   </div>
 
+                  {/* Age (Optional) */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
-                      Age
+                    <label htmlFor="guest-age" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                      Age <span className="text-[10px] font-normal lowercase">(optional)</span>
                     </label>
                     <input
+                      id="guest-age"
                       type="number"
                       min="18"
-                      max="100"
+                      max="120"
                       value={guestAge}
-                      onChange={(e) => setGuestAge(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                      onChange={(e) => handleFieldChange('guestAge', e.target.value, setGuestAge)}
+                      onBlur={(e) => handleFieldBlur('guestAge', e.target.value)}
+                      placeholder="e.g. 28"
+                      aria-invalid={Boolean(errors.guestAge)}
+                      aria-describedby={errors.guestAge ? 'guestAge-error' : undefined}
+                      className={`w-full px-4 py-2.5 bg-surface-container-low border rounded-xl text-xs font-semibold text-on-surface outline-none transition-colors focus:ring-1 focus:ring-primary ${
+                        errors.guestAge ? 'border-error ring-1 ring-error/20 bg-error/5' : 'border-surface-container'
+                      }`}
                     />
+                    {errors.guestAge && (
+                      <p id="guestAge-error" role="alert" className="text-error text-[11px] mt-1 flex items-center gap-1 font-medium">
+                        <span className="material-symbols-outlined text-[13px]">error</span>
+                        {errors.guestAge}
+                      </p>
+                    )}
                   </div>
 
+                  {/* Gender (Optional) */}
                   <div>
-                    <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
-                      Gender
+                    <label htmlFor="guest-gender" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                      Gender <span className="text-[10px] font-normal lowercase">(optional)</span>
                     </label>
                     <select
+                      id="guest-gender"
                       value={guestGender}
-                      onChange={(e) => setGuestGender(e.target.value)}
-                      className="w-full px-4 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                      onChange={(e) => handleFieldChange('guestGender', e.target.value, setGuestGender)}
+                      onBlur={(e) => handleFieldBlur('guestGender', e.target.value)}
+                      className="w-full px-4 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary cursor-pointer"
                     >
                       <option value="Male">Male</option>
                       <option value="Female">Female</option>
@@ -442,17 +781,39 @@ export const BookingFlowPage = () => {
                   </div>
                 </div>
 
+                {/* Special Requests */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
-                    Special Requests / Arrival Notes
-                  </label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label htmlFor="guest-special-requests" className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant">
+                      Special Requests / Arrival Notes <span className="text-[10px] font-normal lowercase">(optional)</span>
+                    </label>
+                    <span className="text-[10px] text-on-surface-variant">
+                      {specialRequests.length}/500 chars
+                    </span>
+                  </div>
                   <textarea
+                    id="guest-special-requests"
                     rows={3}
+                    maxLength={500}
                     value={specialRequests}
-                    onChange={(e) => setSpecialRequests(e.target.value)}
+                    onChange={(e) => handleFieldChange('specialRequests', e.target.value, setSpecialRequests)}
+                    onBlur={(e) => handleFieldBlur('specialRequests', e.target.value)}
                     placeholder="e.g. Quiet room preferred, early check-in around 12:00 PM if available."
-                    className="w-full px-4 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs text-on-surface outline-none focus:ring-1 focus:ring-primary"
+                    aria-invalid={Boolean(errors.specialRequests)}
+                    aria-describedby={errors.specialRequests ? 'specialRequests-error' : undefined}
+                    className={`w-full px-4 py-2.5 bg-surface-container-low border rounded-xl text-xs text-on-surface outline-none transition-colors focus:ring-1 focus:ring-primary ${
+                      errors.specialRequests ? 'border-error ring-1 ring-error/20 bg-error/5' : 'border-surface-container'
+                    }`}
                   />
+                  {errors.specialRequests && (
+                    <p id="specialRequests-error" role="alert" className="text-error text-[11px] mt-1 flex items-center gap-1 font-medium">
+                      <span className="material-symbols-outlined text-[13px]">error</span>
+                      {errors.specialRequests}
+                    </p>
+                  )}
+                  <span className="text-[11px] text-on-surface-variant/70 mt-1 block">
+                    Optional — you may leave this blank and proceed with your booking.
+                  </span>
                 </div>
 
                 <div className="flex gap-4 pt-4">
@@ -465,13 +826,7 @@ export const BookingFlowPage = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      if (!guestName || !guestEmail) {
-                        showToast('Please fill in required guest details.', 'error');
-                        return;
-                      }
-                      setStep(3);
-                    }}
+                    onClick={handleProceedToStep3}
                     className="w-2/3 py-3.5 bg-primary text-on-primary font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-primary-container transition-all shadow-md"
                   >
                     Proceed to Payment →
@@ -492,16 +847,30 @@ export const BookingFlowPage = () => {
                     <span className="material-symbols-outlined text-amber-700 text-2xl shrink-0">lock</span>
                     <div className="text-xs text-amber-900">
                       <span className="font-bold block text-sm">Authentication Required</span>
-                      <span>You will be prompted to sign in or create an account when confirming. Your booking details will be preserved.</span>
+                      <span>
+                        You will be prompted to sign in or create an account when confirming. Your booking details will be preserved.
+                      </span>
                     </div>
                   </div>
                 )}
 
                 <div className="space-y-3">
                   {[
-                    { id: 'Pay at Hotel', title: 'Pay Upon Arrival at Hotel', desc: 'No advance charge required. Pay by cash/card at front desk check-in.' },
-                    { id: 'Credit Card', title: 'Credit / Debit Card (Online Guarantee)', desc: 'Secure card authorization with 256-bit encryption.' },
-                    { id: 'UPI / NetBanking', title: 'UPI / Google Pay / NetBanking', desc: 'Instant UPI QR payment or direct net banking.' }
+                    {
+                      id: 'Pay at Hotel',
+                      title: 'Pay Upon Arrival at Hotel',
+                      desc: 'No advance charge required. Pay by cash or card at the front desk upon check-in.'
+                    },
+                    {
+                      id: 'Credit Card',
+                      title: 'Credit / Debit Card (Online Guarantee)',
+                      desc: 'Secure card authorization with 256-bit encryption.'
+                    },
+                    {
+                      id: 'UPI / NetBanking',
+                      title: 'UPI / Google Pay / NetBanking',
+                      desc: 'Instant UPI QR payment or direct net banking.'
+                    }
                   ].map((p) => (
                     <label
                       key={p.id}
@@ -528,9 +897,11 @@ export const BookingFlowPage = () => {
                 </div>
 
                 <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
-                  <span className="material-symbols-outlined text-emerald-700 text-xl shrink-0">verified_user</span>
+                  <span className="material-symbols-outlined text-emerald-700 text-xl shrink-0">
+                    verified_user
+                  </span>
                   <p className="text-xs text-emerald-900 font-medium">
-                    Your reservation is backed by Hotel Ambience Inn's 24-hour risk-free cancellation guarantee.
+                    Your reservation is backed by Hotel Ambience Inn's direct-booking best rate and flexible 24-hour cancellation guarantee.
                   </p>
                 </div>
 
@@ -544,8 +915,8 @@ export const BookingFlowPage = () => {
                   </button>
                   <button
                     type="submit"
-                    disabled={submitting}
-                    className="w-2/3 py-3.5 bg-primary text-on-primary font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-primary-container transition-all shadow-xl flex items-center justify-center gap-2"
+                    disabled={submitting || !isAvailable}
+                    className="w-2/3 py-3.5 bg-primary text-on-primary font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-primary-container transition-all shadow-xl flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     {submitting ? (
                       <span className="inline-block w-4 h-4 border-2 border-on-primary border-t-transparent rounded-full animate-spin"></span>
@@ -594,7 +965,9 @@ export const BookingFlowPage = () => {
               </div>
               <div className="flex justify-between">
                 <span>Duration:</span>
-                <span className="font-bold text-on-surface">{nights} {nights === 1 ? 'Night' : 'Nights'}</span>
+                <span className="font-bold text-on-surface">
+                  {nights} {nights === 1 ? 'Night' : 'Nights'}
+                </span>
               </div>
             </div>
 
@@ -607,18 +980,6 @@ export const BookingFlowPage = () => {
                 <span>Subtotal ({nights} nights):</span>
                 <span>₹{roomTotal.toLocaleString()}</span>
               </div>
-              {addons.breakfast && (
-                <div className="flex justify-between text-secondary font-semibold">
-                  <span>Daily Breakfast:</span>
-                  <span>+₹{breakfastTotal.toLocaleString()}</span>
-                </div>
-              )}
-              {addons.airportTransfer && (
-                <div className="flex justify-between text-secondary font-semibold">
-                  <span>Airport Transfer:</span>
-                  <span>+₹{transferTotal.toLocaleString()}</span>
-                </div>
-              )}
               <div className="flex justify-between text-on-surface-variant">
                 <span>Taxes & Fees:</span>
                 <span>₹0 (Included)</span>

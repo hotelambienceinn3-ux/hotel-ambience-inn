@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient';
 import { getCanonicalRoomImages } from '../lib/roomImageUtils';
+import { validateStayDates } from '../lib/dateUtils';
 
 /**
  * Real Supabase Room Service
@@ -207,31 +208,94 @@ export const roomService = {
 
   /**
    * Real Room Availability Calculation
-   * physical rooms NOT in maintenance/inactive
-   * minus bookings overlapping: existing.check_in < requested_check_out AND existing.check_out > requested_check_in
+   * physical rooms with status = 'available' (excluding maintenance/inactive)
+   * minus active bookings overlapping: existing.check_in < requested_check_out AND existing.check_out > requested_check_in
+   * Follows PostgreSQL daterange(check_in, check_out, '[)') exclusion semantics.
    */
   checkAvailability: async (checkInDate, checkOutDate) => {
     if (!checkInDate || !checkOutDate) {
       return {};
     }
 
-    // 1. Fetch physical rooms
-    const { data: physicalRooms, error: roomsErr } = await supabase
-      .from('rooms')
-      .select('*');
-
-    if (roomsErr) {
-      console.error('Error fetching physical rooms for availability:', roomsErr);
-      return {};
+    const dateVal = validateStayDates(checkInDate, checkOutDate);
+    if (!dateVal.isValid) {
+      throw new Error(dateVal.error || "Invalid stay dates for availability search.");
     }
 
-    // Filter out maintenance/inactive physical rooms
-    const activePhysicalRooms = (physicalRooms || []).filter(
-      (r) => r.status !== 'maintenance' && r.status !== 'inactive'
+    // 0. Optional Trusted Server RPC: If get_room_availability is installed in Supabase,
+    // it computes authoritative per-room availability across all users without leaking guest PII.
+    try {
+      const { data: rpcRooms, error: rpcErr } = await supabase.rpc('get_room_availability', {
+        p_check_in: checkInDate,
+        p_check_out: checkOutDate
+      });
+
+      if (!rpcErr && Array.isArray(rpcRooms) && rpcRooms.length > 0) {
+        const { data: roomTypes } = await supabase
+          .from('room_types')
+          .select('id, name, base_price, status')
+          .eq('status', 'active');
+
+        const availabilityMap = {};
+        (roomTypes || []).forEach((rt) => {
+          availabilityMap[rt.id] = {
+            roomTypeId: rt.id,
+            roomTypeName: rt.name,
+            totalRooms: 0,
+            availableRooms: [],
+            availableCount: 0,
+            bookedCount: 0,
+            isAvailable: false
+          };
+        });
+
+        rpcRooms.forEach((r) => {
+          const typeId = r.room_type_id;
+          if (availabilityMap[typeId]) {
+            availabilityMap[typeId].totalRooms += 1;
+            if (r.is_available) {
+              availabilityMap[typeId].availableRooms.push({
+                id: r.room_id,
+                room_number: r.room_number,
+                floor_number: r.floor_number,
+                room_type_id: r.room_type_id,
+                status: 'available'
+              });
+              availabilityMap[typeId].availableCount += 1;
+              availabilityMap[typeId].isAvailable = true;
+            } else {
+              availabilityMap[typeId].bookedCount += 1;
+            }
+          }
+        });
+
+        return availabilityMap;
+      }
+    } catch {
+      // Continue to direct query fallback if RPC not yet installed on database
+    }
+
+    // 1. Fetch all room types and physical rooms in parallel
+    const [rtRes, roomsRes] = await Promise.all([
+      supabase.from('room_types').select('id, name, base_price, status').eq('status', 'active'),
+      supabase.from('rooms').select('*')
+    ]);
+
+    if (roomsRes.error) {
+      console.error('Error fetching physical rooms for availability:', roomsRes.error);
+      throw new Error("Unable to check room availability. Please verify network connection.");
+    }
+
+    const physicalRooms = roomsRes.data || [];
+    const roomTypes = rtRes.data || [];
+
+    // Filter active physical rooms (status === 'available')
+    const activePhysicalRooms = physicalRooms.filter(
+      (r) => r.status === 'available'
     );
 
     // 2. Fetch blocking overlapping bookings
-    // Overlap condition: existing.check_in < requested_check_out AND existing.check_out > requested_check_in
+    // Active overlap condition: existing.check_in < requested_check_out AND existing.check_out > requested_check_in
     const { data: overlappingBookings, error: bookingsErr } = await supabase
       .from('bookings')
       .select('room_id, booking_status, check_in, check_out')
@@ -240,12 +304,13 @@ export const roomService = {
 
     if (bookingsErr) {
       console.error('Error fetching overlapping bookings:', bookingsErr);
+      throw new Error("Failed to verify overlapping room reservations. Please try again.");
     }
 
-    // Non-blocking statuses: cancelled, checked_out, completed
+    // Non-blocking statuses: cancelled, checked_out, completed (releases physical inventory)
     const nonBlockingStatuses = new Set(['cancelled', 'checked_out', 'completed']);
 
-    // Filter active blocking bookings (any booking not cancelled, checked_out, or completed)
+    // Filter active blocking bookings (any booking NOT in non-blocking statuses)
     const bookedRoomIds = new Set(
       (overlappingBookings || [])
         .filter((b) => !b.booking_status || !nonBlockingStatuses.has(String(b.booking_status).toLowerCase()))
@@ -255,14 +320,30 @@ export const roomService = {
     // 3. Group availability per room_type_id
     const availabilityMap = {};
 
+    // Initialize all active room types with zero counts to prevent undefined or mock fallbacks
+    roomTypes.forEach((rt) => {
+      availabilityMap[rt.id] = {
+        roomTypeId: rt.id,
+        roomTypeName: rt.name,
+        totalRooms: 0,
+        availableRooms: [],
+        availableCount: 0,
+        bookedCount: 0,
+        isAvailable: false
+      };
+    });
+
+    // Populate active physical rooms into corresponding room types
     activePhysicalRooms.forEach((pRoom) => {
       const typeId = pRoom.room_type_id;
       if (!availabilityMap[typeId]) {
         availabilityMap[typeId] = {
+          roomTypeId: typeId,
           totalRooms: 0,
           availableRooms: [],
           availableCount: 0,
-          bookedCount: 0
+          bookedCount: 0,
+          isAvailable: false
         };
       }
 
@@ -271,6 +352,7 @@ export const roomService = {
       if (!bookedRoomIds.has(pRoom.id)) {
         availabilityMap[typeId].availableRooms.push(pRoom);
         availabilityMap[typeId].availableCount += 1;
+        availabilityMap[typeId].isAvailable = true;
       } else {
         availabilityMap[typeId].bookedCount += 1;
       }

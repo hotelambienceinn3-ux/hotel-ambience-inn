@@ -226,7 +226,7 @@ export const CustomerDashboardPage = () => {
                           </button>
                           {b.status !== 'Cancelled' && (
                             <button
-                              onClick={() => cancelBooking(b.id)}
+                              onClick={() => cancelBooking(b.fullId || b.id)}
                               className="px-3 py-1.5 border border-red-200 text-error text-[11px] font-bold uppercase rounded-lg hover:bg-red-50 transition-colors"
                             >
                               Cancel Booking

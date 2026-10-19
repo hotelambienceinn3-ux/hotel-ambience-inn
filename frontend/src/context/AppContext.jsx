@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { initialRoomsData, initialBookings, initialCustomers, initialOffers, initialReviews, hotelInfo } from '../data/hotelData';
 import { roomService } from '../services/roomService';
 import { bookingService } from '../services/bookingService';
 import { authService } from '../services/authService';
 import { supabase } from '../lib/supabaseClient';
+import { getDefaultStayDates, getTodayKolkata, getNextDayKolkata } from '../lib/dateUtils';
 
 const AppContext = createContext();
 
@@ -29,9 +30,11 @@ export const AppProvider = ({ children }) => {
   const [physicalRooms, setPhysicalRooms] = useState([]);
   const [physicalRoomsLoading, setPhysicalRoomsLoading] = useState(false);
 
-  // Availability map: { [roomTypeId]: { totalRooms, availableRooms, availableCount, bookedCount } }
+  // Availability map: { [roomTypeId]: { totalRooms, availableRooms, availableCount, bookedCount, isAvailable } }
   const [availability, setAvailability] = useState({});
   const [isCheckingAvailability, setIsCheckingAvailability] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState(null);
+  const availabilityRequestSeq = useRef(0);
 
   // Real Supabase User Bookings state (for logged-in customer)
   const [userBookings, setUserBookings] = useState([]);
@@ -57,13 +60,26 @@ export const AppProvider = ({ children }) => {
   // Latest created booking for confirmation page
   const [latestBooking, setLatestBooking] = useState(null);
 
-  // Search parameters for room availability
+  // Dynamic default stay dates initialized using Asia/Kolkata timezone (today to tomorrow)
+  const initialStay = getDefaultStayDates();
   const [searchCriteria, setSearchCriteria] = useState({
-    checkIn: "2026-10-15",
-    checkOut: "2026-10-18",
+    checkIn: initialStay.checkIn,
+    checkOut: initialStay.checkOut,
     guests: "2 Adults",
     roomCategory: "all"
   });
+
+  // Ensure search criteria never retains a past check-in date
+  useEffect(() => {
+    const today = getTodayKolkata();
+    if (searchCriteria.checkIn && searchCriteria.checkIn < today) {
+      setSearchCriteria((prev) => ({
+        ...prev,
+        checkIn: today,
+        checkOut: prev.checkOut && prev.checkOut > today ? prev.checkOut : getNextDayKolkata(today)
+      }));
+    }
+  }, [searchCriteria.checkIn]);
 
   /**
    * Load real Room Types from Supabase on mount
@@ -105,7 +121,8 @@ export const AppProvider = ({ children }) => {
   }, []);
 
   /**
-   * Calculate Real Room Availability whenever checkIn or checkOut dates change
+   * Calculate Real Room Availability with race-condition protection.
+   * If consecutive requests are dispatched, stale async responses are discarded.
    */
   const searchAvailability = async (checkInDate, checkOutDate) => {
     const checkIn = checkInDate || searchCriteria.checkIn;
@@ -113,20 +130,101 @@ export const AppProvider = ({ children }) => {
 
     if (!checkIn || !checkOut) return;
 
+    const reqSeq = ++availabilityRequestSeq.current;
     setIsCheckingAvailability(true);
+    setAvailabilityError(null);
+
     try {
       const map = await roomService.checkAvailability(checkIn, checkOut);
-      setAvailability(map);
+      // Guard against stale async responses overwriting newer availability results
+      if (reqSeq === availabilityRequestSeq.current) {
+        setAvailability(map);
+        setAvailabilityError(null);
+      }
     } catch (err) {
-      console.error('Error calculating room availability:', err);
+      if (reqSeq === availabilityRequestSeq.current) {
+        console.error('Error calculating room availability:', err);
+        setAvailabilityError(err.message || 'Unable to check live room availability.');
+      }
     } finally {
-      setIsCheckingAvailability(false);
+      if (reqSeq === availabilityRequestSeq.current) {
+        setIsCheckingAvailability(false);
+      }
     }
   };
 
   useEffect(() => {
     searchAvailability(searchCriteria.checkIn, searchCriteria.checkOut);
   }, [searchCriteria.checkIn, searchCriteria.checkOut]);
+
+  /**
+   * Visible-Tab Polling Fallback for Room Availability:
+   * Supabase RLS suppresses Realtime WAL events across non-admin users.
+   * To prevent stale inventory when multiple guests are booking concurrently,
+   * poll availability every 30 seconds ONLY when:
+   * 1. The booking page is currently active (activePage === 'booking').
+   * 2. The document/tab is currently visible (!document.hidden).
+   * 3. No other availability request is currently in-flight.
+   * When the user leaves the booking page or hides the tab, polling is paused/stopped.
+   * When returning to the tab, an immediate fresh check is triggered.
+   */
+  useEffect(() => {
+    if (activePage !== 'booking') return;
+
+    const POLLING_INTERVAL_MS = 30000;
+    let intervalId = null;
+
+    const executePolling = () => {
+      if (document.hidden) return;
+      if (isCheckingAvailability) return;
+      searchAvailability(searchCriteria.checkIn, searchCriteria.checkOut);
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        executePolling();
+      }
+    };
+
+    intervalId = setInterval(executePolling, POLLING_INTERVAL_MS);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [activePage, searchCriteria.checkIn, searchCriteria.checkOut, isCheckingAvailability]);
+
+  /**
+   * Real-time Supabase Subscription
+   * Listens for changes to bookings and rooms to keep inventory refreshed
+   */
+  useEffect(() => {
+    const channel = supabase
+      .channel('live-inventory-updates')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'bookings' },
+        () => {
+          searchAvailability();
+          if (user?.id) loadUserBookings(user.id);
+          if (user?.role === 'admin') loadAdminData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rooms' },
+        () => {
+          loadPhysicalRooms();
+          searchAvailability();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [searchCriteria.checkIn, searchCriteria.checkOut, user?.id, user?.role]);
 
   /**
    * Fetch authenticated user's real bookings from Supabase
@@ -453,10 +551,17 @@ export const AppProvider = ({ children }) => {
         checkOut: bookingData.checkOut || searchCriteria.checkOut,
         guestsCount,
         specialRequest: bookingData.specialRequests || '',
-        guestInfo: bookingData.guestName ? [{ full_name: bookingData.guestName }] : [],
-        paymentMethod: bookingData.paymentMethod || 'Pay at Hotel',
-        totalPrice: bookingData.totalPrice,
-        subtotalPrice: bookingData.subtotal
+        guestName: bookingData.guestName || user.name || user.full_name || '',
+        guestEmail: bookingData.guestEmail || user.email || '',
+        guestPhone: bookingData.guestPhone || user.phone || '',
+        guestInfo: [
+          {
+            full_name: bookingData.guestName || user.name || user.full_name || 'Guest',
+            age: bookingData.guestAge ? Number(bookingData.guestAge) : null,
+            gender: bookingData.guestGender || null
+          }
+        ],
+        paymentMethod: bookingData.paymentMethod || 'Pay at Hotel'
       });
 
       const roomTypeInfo = newBookingRecord.rooms?.room_types;
@@ -472,8 +577,8 @@ export const AppProvider = ({ children }) => {
         checkIn: newBookingRecord.check_in,
         checkOut: newBookingRecord.check_out,
         guests: `${newBookingRecord.guests} Guests`,
-        nights: bookingData.nights || 3,
-        totalPrice: Number(newBookingRecord.total_amount || newBookingRecord.subtotal || bookingData.totalPrice || 0),
+        nights: bookingData.nights || 1,
+        totalPrice: Number(newBookingRecord.total_amount || newBookingRecord.subtotal || 0),
         subtotal: Number(newBookingRecord.subtotal || 0),
         paymentMethod: 'Pay Upon Arrival at Hotel',
         paymentStatus: 'Pending / Pay at Hotel',
@@ -504,15 +609,30 @@ export const AppProvider = ({ children }) => {
     }
   };
 
-  const cancelBooking = async (bookingId) => {
+  const cancelBooking = async (bookingIdentifier) => {
     try {
-      if (bookingId.length > 10) {
-        await bookingService.updateBookingStatusAdmin(bookingId, 'cancelled');
+      if (!bookingIdentifier) return;
+
+      // Resolve the actual database UUID (fullId) if a formatted reference (HAI-YYYY-XXXXX) was passed
+      let targetUuid = bookingIdentifier;
+      const match = (userBookings || []).find(
+        (b) => b.fullId === bookingIdentifier || b.id === bookingIdentifier
+      );
+      if (match?.fullId) {
+        targetUuid = match.fullId;
       }
-      showToast("Booking cancelled successfully.", "info");
-      if (user?.id) loadUserBookings(user.id);
-      if (user?.role === 'admin') loadAdminData();
+
+      if (isUuid) {
+        await bookingService.cancelBooking(targetUuid);
+      } else {
+        throw new Error("Invalid reservation identifier for cancellation.");
+      }
+
+      showToast("Reservation cancelled successfully.", "info");
+      if (user?.id) await loadUserBookings(user.id);
+      if (user?.role === 'admin') await loadAdminData();
     } catch (err) {
+      console.error("[Cancel Booking]", err);
       showToast(err.message || "Failed to cancel booking.", "error");
     }
   };
@@ -692,6 +812,7 @@ export const AppProvider = ({ children }) => {
         setSearchCriteria,
         availability,
         isCheckingAvailability,
+        availabilityError,
         searchAvailability,
         user,
         authLoading,

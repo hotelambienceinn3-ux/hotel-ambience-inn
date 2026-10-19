@@ -208,7 +208,7 @@ export const AuthModal = () => {
                   type="text"
                   required
                   autoComplete="off"
-                  placeholder="e.g. Sarthak Andhale"
+                  placeholder="e.g. Aarav Sharma"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-4 py-2.5 bg-surface-container-low border border-surface-container rounded-xl text-xs font-semibold text-on-surface outline-none focus:ring-1 focus:ring-primary"
