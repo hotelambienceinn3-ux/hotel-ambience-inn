@@ -69,7 +69,10 @@ export const bookingService = {
     // Sanitize special requests text
     const specialReqVal = validateSpecialRequests(specialRequest);
     const sanitizedSpecialReq = specialReqVal.value || null;
-    const numGuests = Number(guestsCount) || 2;
+    // Clean phone for RPC matching ^(\+91[\s-]?)?[6-9]\d{9}$ (10 consecutive digits)
+    const cleanPhone = phoneVal.digitsOnly
+      ? `+91 ${phoneVal.digitsOnly}`
+      : `+91 ${(phoneVal.normalizedPhone || '').replace(/\D/g, '').slice(-10)}`;
 
     // 4. EXECUTE TRUSTED DATABASE RPC CREATION
     // All reservations must execute atomically through the trusted database transaction `create_booking`.
@@ -81,7 +84,7 @@ export const bookingService = {
       p_guests_count: numGuests,
       p_guest_name: nameVal.value,
       p_guest_email: emailVal.normalizedEmail,
-      p_guest_phone: phoneVal.normalizedPhone,
+      p_guest_phone: cleanPhone,
       p_special_request: sanitizedSpecialReq,
       p_payment_method: paymentMethod,
       p_guest_age: guestInfo?.[0]?.age ? Number(guestInfo[0].age) : null,

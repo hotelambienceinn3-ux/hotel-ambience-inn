@@ -719,7 +719,7 @@ export const BookingFlowPage = () => {
                       value={guestPhone}
                       onChange={(e) => handleFieldChange('guestPhone', e.target.value, setGuestPhone)}
                       onBlur={(e) => handleFieldBlur('guestPhone', e.target.value)}
-                      placeholder="+91 98765 43210"
+                      placeholder="+91 9876543210"
                       aria-invalid={Boolean(errors.guestPhone)}
                       aria-describedby={errors.guestPhone ? 'guestPhone-error' : undefined}
                       className={`w-full px-4 py-2.5 bg-surface-container-low border rounded-xl text-xs font-semibold text-on-surface outline-none transition-colors focus:ring-1 focus:ring-primary ${

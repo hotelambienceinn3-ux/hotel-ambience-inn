@@ -237,9 +237,9 @@ export const validateIndianPhone = (phone) => {
     };
   }
 
-  // Canonical format: +91 XXXXX XXXXX
+  // Canonical display format: +91 XXXXX XXXXX
   const formatted = `+91 ${digitsOnly.slice(0, 5)} ${digitsOnly.slice(5)}`;
-  return { isValid: true, normalizedPhone: formatted };
+  return { isValid: true, normalizedPhone: formatted, digitsOnly };
 };
 
 /**
