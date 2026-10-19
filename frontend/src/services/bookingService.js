@@ -69,6 +69,7 @@ export const bookingService = {
     // Sanitize special requests text
     const specialReqVal = validateSpecialRequests(specialRequest);
     const sanitizedSpecialReq = specialReqVal.value || null;
+    const numGuests = Number(guestsCount) || 2;
     // Clean phone for RPC matching ^(\+91[\s-]?)?[6-9]\d{9}$ (10 consecutive digits)
     const cleanPhone = phoneVal.digitsOnly
       ? `+91 ${phoneVal.digitsOnly}`
