@@ -1194,6 +1194,83 @@ assert(formWithMissingEmail.errors.guestEmail, 'Error correctly points to guestE
 assert(!formWithMissingEmail.errors.specialRequests, 'Special requests is NOT marked with an error');
 
 console.log('\n===============================================================');
+console.log('TEST SUITE 20: Gallery Management & Home Page Showcase');
+console.log('===============================================================');
+
+// Mock initial gallery list
+const sampleInitialGallery = [
+  { id: 1, title: 'Facade View', category: 'exterior', image: 'https://example.com/facade.jpg', featured: true },
+  { id: 2, title: 'Deluxe Suite', category: 'rooms', image: 'https://example.com/deluxe.jpg', featured: true },
+  { id: 3, title: 'Fine Dining', category: 'dining', image: 'https://example.com/dining.jpg', featured: false }
+];
+
+let galleryState = [...sampleInitialGallery];
+
+function addPhoto(state, newPhoto) {
+  if (!newPhoto?.image || !newPhoto.image.trim()) {
+    throw new Error('Image URL or file is required.');
+  }
+  const item = {
+    id: Date.now(),
+    title: newPhoto.title?.trim() || 'Ambience Inn Photo',
+    category: newPhoto.category || 'exterior',
+    image: newPhoto.image,
+    desc: newPhoto.desc?.trim() || '',
+    featured: newPhoto.featured !== undefined ? newPhoto.featured : true
+  };
+  return [item, ...state];
+}
+
+function removePhoto(state, id) {
+  return state.filter(p => p.id !== id);
+}
+
+function toggleFeatured(state, id) {
+  return state.map(p => p.id === id ? { ...p, featured: !p.featured } : p);
+}
+
+// 20.1 Adding a photo
+galleryState = addPhoto(galleryState, {
+  title: 'Courtyard at Dusk',
+  category: 'exterior',
+  image: 'https://example.com/courtyard.jpg',
+  desc: 'Warm evening lighting',
+  featured: true
+});
+assert(galleryState.length === 4, 'Adding photo increases gallery count to 4');
+assert(galleryState[0].title === 'Courtyard at Dusk', 'New photo is prepended at the top');
+assert(galleryState[0].featured === true, 'New photo is featured on home page by default');
+
+// 20.2 Rejecting empty image source
+let emptyImageRejected = false;
+try {
+  addPhoto(galleryState, { title: 'No Image', image: '' });
+} catch (e) {
+  emptyImageRejected = true;
+}
+assert(emptyImageRejected, 'Adding photo with empty image source throws error');
+
+// 20.3 Removing a photo
+galleryState = removePhoto(galleryState, 2);
+assert(galleryState.length === 3, 'Removing photo with ID 2 reduces gallery count');
+assert(!galleryState.some(p => p.id === 2), 'Photo with ID 2 is completely removed');
+
+// 20.4 Toggling home page featured flag
+assert(galleryState.find(p => p.id === 3).featured === false, 'Photo 3 starts as unfeatured');
+galleryState = toggleFeatured(galleryState, 3);
+assert(galleryState.find(p => p.id === 3).featured === true, 'Toggling featured enables home page visibility');
+galleryState = toggleFeatured(galleryState, 3);
+assert(galleryState.find(p => p.id === 3).featured === false, 'Toggling again disables home page visibility');
+
+// 20.5 Category filtering
+const exteriorPhotos = galleryState.filter(p => p.category === 'exterior');
+assert(exteriorPhotos.length === 2, 'Category filter correctly isolates exterior photos');
+
+// 20.6 Resetting gallery to initial state
+galleryState = [...sampleInitialGallery];
+assert(galleryState.length === 3 && galleryState.some(p => p.id === 2), 'Reset successfully restores original photos');
+
+console.log('\n===============================================================');
 console.log(`TEST SUMMARY: ${passedTests} PASSED, ${failedTests} FAILED`);
 console.log('===============================================================');
 

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { initialRoomsData, initialBookings, initialCustomers, initialOffers, initialReviews, hotelInfo } from '../data/hotelData';
+import { initialRoomsData, initialBookings, initialCustomers, initialOffers, initialReviews, hotelInfo, initialGalleryImages } from '../data/hotelData';
 import { roomService } from '../services/roomService';
 import { bookingService } from '../services/bookingService';
 import { authService } from '../services/authService';
@@ -54,6 +54,28 @@ export const AppProvider = ({ children }) => {
 
   // Guest reviews state
   const [reviews, setReviews] = useState(initialReviews);
+
+  // Gallery images state (persisted to localStorage so Admin changes show on Home page & Gallery)
+  const [galleryImages, setGalleryImages] = useState(() => {
+    try {
+      const saved = localStorage.getItem('hai_gallery_images');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch (e) {
+      console.warn("Could not load gallery from localStorage:", e);
+    }
+    return initialGalleryImages;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('hai_gallery_images', JSON.stringify(galleryImages));
+    } catch (e) {
+      console.warn("Could not save gallery to localStorage:", e);
+    }
+  }, [galleryImages]);
 
   // Hotel Settings state
   const [settings, setSettings] = useState(hotelInfo);
@@ -775,6 +797,44 @@ export const AppProvider = ({ children }) => {
     showToast("Hotel settings saved successfully.", "success");
   };
 
+  // GALLERY OPERATIONS
+  const addGalleryImage = (newImage) => {
+    if (!newImage?.image) {
+      showToast("Please provide an image URL or upload a photo.", "error");
+      return false;
+    }
+    const item = {
+      id: Date.now(),
+      title: newImage.title?.trim() || "Ambience Inn Sanctuary",
+      category: newImage.category || "exterior",
+      image: newImage.image,
+      desc: newImage.desc?.trim() || "",
+      featured: newImage.featured !== undefined ? newImage.featured : true
+    };
+    setGalleryImages((prev) => [item, ...prev]);
+    showToast("Photo added to gallery successfully!", "success");
+    return true;
+  };
+
+  const deleteGalleryImage = (imageId) => {
+    setGalleryImages((prev) => prev.filter((img) => img.id !== imageId));
+    showToast("Photo removed from gallery.", "info");
+  };
+
+  const toggleGalleryFeatured = (imageId) => {
+    setGalleryImages((prev) =>
+      prev.map((img) =>
+        img.id === imageId ? { ...img, featured: !img.featured } : img
+      )
+    );
+    showToast("Home page visibility updated.", "info");
+  };
+
+  const resetGalleryImages = () => {
+    setGalleryImages(initialGalleryImages);
+    showToast("Gallery reset to original photos.", "info");
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -814,6 +874,11 @@ export const AppProvider = ({ children }) => {
         reviews,
         approveReview,
         rejectReview,
+        galleryImages,
+        addGalleryImage,
+        deleteGalleryImage,
+        toggleGalleryFeatured,
+        resetGalleryImages,
         settings,
         updateSettings,
         searchCriteria,

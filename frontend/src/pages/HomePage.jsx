@@ -5,8 +5,10 @@ import { getCanonicalRoomImages } from '../lib/roomImageUtils';
 import { getTodayKolkata, getNextDayKolkata, validateStayDates } from '../lib/dateUtils';
 
 export const HomePage = () => {
-  const { navigate, openRoomDetails, startBooking, setSearchCriteria, searchAvailability, rooms, showToast } = useApp();
+  const { navigate, openRoomDetails, startBooking, setSearchCriteria, searchAvailability, rooms, galleryImages, showToast } = useApp();
   const [activeRoomViewer, setActiveRoomViewer] = useState(null);
+  const [homeGalleryFilter, setHomeGalleryFilter] = useState('all');
+  const [activeGalleryViewer, setActiveGalleryViewer] = useState(null);
 
   const todayKolkata = getTodayKolkata();
   const [checkIn, setCheckIn] = useState(todayKolkata);
@@ -382,7 +384,116 @@ export const HomePage = () => {
         </div>
       </section>
 
-      {/* 4. GUEST TESTIMONIALS */}
+      {/* 4. VISUAL GALLERY SHOWCASE */}
+      <section className="bg-surface py-20 border-b border-surface-container">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 w-full">
+          {/* Section Header */}
+          <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-widest text-primary flex items-center gap-1.5 mb-2">
+                <span className="material-symbols-outlined text-[18px]">photo_library</span>
+                Visual Sanctuary
+              </span>
+              <h2 className="font-serif text-3xl sm:text-4xl font-bold text-on-surface">
+                Experience Hotel Ambience Inn
+              </h2>
+              <p className="text-xs sm:text-sm text-on-surface-variant mt-2 max-w-xl leading-relaxed">
+                Immerse yourself in our serene architecture, teak-accented suites, and tranquil boutique hospitality in Moshi, Pimpri-Chinchwad.
+              </p>
+            </div>
+
+            <button
+              onClick={() => navigate('gallery')}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-surface-container-low hover:bg-surface-container text-xs font-bold uppercase tracking-wider text-primary border border-surface-container rounded-xl transition-colors self-start md:self-auto shrink-0 shadow-sm"
+            >
+              <span>Explore Full Gallery ({(galleryImages || []).length} Photos)</span>
+              <span className="material-symbols-outlined text-sm">arrow_forward</span>
+            </button>
+          </div>
+
+          {/* Category Filter Pills */}
+          <div className="flex flex-wrap items-center gap-2 mb-8">
+            {[
+              { id: 'all', label: 'All Showcase' },
+              { id: 'rooms', label: 'Rooms & Suites' },
+              { id: 'exterior', label: 'Exterior & Architecture' },
+              { id: 'dining', label: 'Dining & Lounge' },
+              { id: 'reception', label: 'Reception & Lobby' }
+            ].map((pill) => (
+              <button
+                key={pill.id}
+                onClick={() => setHomeGalleryFilter(pill.id)}
+                className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors ${
+                  homeGalleryFilter === pill.id
+                    ? 'bg-primary text-on-primary shadow-sm'
+                    : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container border border-surface-container'
+                }`}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Gallery Showcase Grid */}
+          {(() => {
+            const allImages = galleryImages || [];
+            let displayed = homeGalleryFilter === 'all'
+              ? (allImages.filter(img => img.featured).length >= 3 ? allImages.filter(img => img.featured) : allImages)
+              : allImages.filter(img => img.category === homeGalleryFilter);
+
+            if (displayed.length === 0) {
+              displayed = allImages;
+            }
+
+            const homeSlice = displayed.slice(0, 6);
+
+            return (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {homeSlice.map((item, idx) => (
+                  <div
+                    key={item.id || idx}
+                    onClick={() => setActiveGalleryViewer({ item, images: homeSlice.map(h => h.image), index: idx })}
+                    className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-surface-container/60 shadow-sm hover:shadow-xl transition-all duration-300 cursor-pointer group flex flex-col"
+                  >
+                    <div className="relative h-64 overflow-hidden bg-surface-container">
+                      <img
+                        src={item.image}
+                        alt={item.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="material-symbols-outlined text-white text-3xl">zoom_in</span>
+                      </div>
+                      <span className="absolute top-3 left-3 px-3 py-1 bg-surface-container-lowest/90 backdrop-blur-md rounded-lg text-[10px] font-bold uppercase tracking-wider text-on-surface shadow-sm">
+                        {item.category}
+                      </span>
+                    </div>
+
+                    <div className="p-4 bg-surface-container-lowest flex-1 flex flex-col justify-between">
+                      <div>
+                        <h3 className="font-serif text-base font-bold text-on-surface group-hover:text-primary transition-colors">
+                          {item.title}
+                        </h3>
+                        {item.desc && (
+                          <p className="text-xs text-on-surface-variant mt-1 line-clamp-2 leading-relaxed">
+                            {item.desc}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1 text-[11px] font-bold text-primary mt-3 pt-2 border-t border-surface-container">
+                        <span>View Photo</span>
+                        <span className="material-symbols-outlined text-sm">fullscreen</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+      </section>
+
+      {/* 5. GUEST TESTIMONIALS */}
       <section className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 w-full py-20">
         <div className="text-center max-w-2xl mx-auto mb-16">
           <span className="text-xs font-bold uppercase tracking-widest text-primary">
@@ -667,6 +778,82 @@ export const HomePage = () => {
                 </button>
               </div>
 
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Interactive Gallery Lightbox Modal */}
+      {activeGalleryViewer && (
+        <div
+          className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in"
+          onClick={() => setActiveGalleryViewer(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full bg-surface-container-lowest rounded-2xl overflow-hidden shadow-2xl border border-surface-container max-h-[90vh] flex flex-col overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => setActiveGalleryViewer(null)}
+              className="absolute top-3 right-3 sm:top-4 sm:right-4 z-20 w-10 h-10 bg-black/60 text-white rounded-full flex items-center justify-center hover:bg-black/80 transition-colors shadow-lg"
+              aria-label="Close photo viewer"
+            >
+              <span className="material-symbols-outlined text-2xl">close</span>
+            </button>
+
+            <div className="relative max-h-[55vh] sm:max-h-[72vh] bg-black flex items-center justify-center shrink-0 overflow-hidden">
+              <img
+                src={activeGalleryViewer.images[activeGalleryViewer.index]}
+                alt={activeGalleryViewer.item?.title || 'Gallery Image'}
+                className="max-h-[55vh] sm:max-h-[72vh] w-auto max-w-full object-contain"
+              />
+
+              {activeGalleryViewer.images.length > 1 && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveGalleryViewer((prev) => ({
+                        ...prev,
+                        index: prev.index === 0 ? prev.images.length - 1 : prev.index - 1
+                      }));
+                    }}
+                    className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all border border-white/20 shadow-lg"
+                    aria-label="Previous photo"
+                  >
+                    <span className="material-symbols-outlined text-2xl">chevron_left</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveGalleryViewer((prev) => ({
+                        ...prev,
+                        index: prev.index === prev.images.length - 1 ? 0 : prev.index + 1
+                      }));
+                    }}
+                    className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center transition-all border border-white/20 shadow-lg"
+                    aria-label="Next photo"
+                  >
+                    <span className="material-symbols-outlined text-2xl">chevron_right</span>
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div className="p-4 sm:p-6 bg-surface-container-lowest flex items-center justify-between gap-4">
+              <div>
+                <h3 className="font-serif text-lg font-bold text-on-surface">
+                  {activeGalleryViewer.item?.title || 'Hotel Ambience Inn'}
+                </h3>
+                {activeGalleryViewer.item?.desc && (
+                  <p className="text-xs text-on-surface-variant mt-1">
+                    {activeGalleryViewer.item.desc}
+                  </p>
+                )}
+              </div>
+              <span className="text-xs font-bold text-on-surface-variant px-3 py-1 bg-surface-container rounded-lg shrink-0">
+                {activeGalleryViewer.index + 1} / {activeGalleryViewer.images.length}
+              </span>
             </div>
           </div>
         </div>

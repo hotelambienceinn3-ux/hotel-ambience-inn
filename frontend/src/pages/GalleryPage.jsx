@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { galleryImages } from '../data/hotelData';
+import { useApp } from '../context/AppContext';
 
 export const GalleryPage = () => {
+  const { galleryImages } = useApp();
   const [filter, setFilter] = useState('all');
   const [activeImage, setActiveImage] = useState(null);
 
+  const imagesList = galleryImages || [];
   const filtered = filter === 'all'
-    ? galleryImages
-    : galleryImages.filter(img => img.category === filter);
+    ? imagesList
+    : imagesList.filter(img => img.category === filter);
 
   return (
     <div className="w-full flex flex-col min-h-screen pt-32 pb-16 bg-surface">

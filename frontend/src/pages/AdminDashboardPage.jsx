@@ -24,6 +24,11 @@ export const AdminDashboardPage = () => {
     reviews,
     approveReview,
     rejectReview,
+    galleryImages,
+    addGalleryImage,
+    deleteGalleryImage,
+    toggleGalleryFeatured,
+    resetGalleryImages,
     settings,
     updateSettings,
     showToast
@@ -62,6 +67,61 @@ export const AdminDashboardPage = () => {
     endDate: '',
     desc: ''
   });
+
+  // GALLERY MANAGEMENT STATE
+  const [galleryCategoryFilter, setGalleryCategoryFilter] = useState('all');
+  const [isAddPhotoOpen, setIsAddPhotoOpen] = useState(false);
+  const [newPhotoForm, setNewPhotoForm] = useState({
+    title: '',
+    category: 'exterior',
+    image: '',
+    desc: '',
+    featured: true
+  });
+  const [photoPreview, setPhotoPreview] = useState('');
+  const [photoError, setPhotoError] = useState('');
+
+  const handlePhotoFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setPhotoError("Please select a valid image file (PNG, JPG, WEBP, etc.).");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError("Image size exceeds 5MB limit. Please choose a smaller photo.");
+      return;
+    }
+    setPhotoError('');
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target.result;
+      setNewPhotoForm((prev) => ({ ...prev, image: result }));
+      setPhotoPreview(result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAddPhotoSubmit = (e) => {
+    e.preventDefault();
+    if (!newPhotoForm.image || !newPhotoForm.image.trim()) {
+      setPhotoError("Please provide an image URL or upload a file from your device.");
+      return;
+    }
+    setPhotoError('');
+    const success = addGalleryImage(newPhotoForm);
+    if (success) {
+      setNewPhotoForm({
+        title: '',
+        category: 'exterior',
+        image: '',
+        desc: '',
+        featured: true
+      });
+      setPhotoPreview('');
+      setIsAddPhotoOpen(false);
+    }
+  };
 
   // SETTINGS FORM STATE
   const [settingsForm, setSettingsForm] = useState({
@@ -796,8 +856,346 @@ export const AdminDashboardPage = () => {
         {/* TAB 8: GALLERY MANAGEMENT */}
         {activeTab === 'gallery' && (
           <div className="space-y-6">
-            <h3 className="font-serif text-xl font-bold text-on-surface">Gallery Management</h3>
-            <p className="text-xs text-on-surface-variant">Manage showcase imagery displayed on public website</p>
+            {/* Header & Controls */}
+            <div className="bg-surface-container-lowest rounded-2xl p-6 border border-surface-container shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-primary text-2xl">photo_library</span>
+                  <h3 className="font-serif text-xl font-bold text-on-surface">Gallery & Home Showcase</h3>
+                </div>
+                <p className="text-xs text-on-surface-variant mt-1">
+                  Add, remove, and manage photos displayed in the public visual gallery and the Home Page showcase.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  onClick={() => setIsAddPhotoOpen(!isAddPhotoOpen)}
+                  className="px-4 py-2 bg-primary text-on-primary text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-primary-container transition-all flex items-center gap-1.5 shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-sm">{isAddPhotoOpen ? 'close' : 'add_photo_alternate'}</span>
+                  <span>{isAddPhotoOpen ? 'Cancel' : 'Add New Photo'}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    if (window.confirm("Are you sure you want to restore the default gallery photos? Custom photos will be replaced.")) {
+                      resetGalleryImages();
+                    }
+                  }}
+                  className="px-3 py-2 border border-surface-container text-xs font-semibold text-on-surface-variant hover:text-on-surface hover:bg-surface-container rounded-xl transition-colors flex items-center gap-1"
+                  title="Reset to default photos"
+                >
+                  <span className="material-symbols-outlined text-sm">restart_alt</span>
+                  <span className="hidden sm:inline">Reset Defaults</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Stats Banner */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-surface-container-lowest p-4 rounded-xl border border-surface-container">
+                <span className="text-[10px] font-bold uppercase text-on-surface-variant">Total Photos</span>
+                <p className="text-2xl font-bold text-on-surface mt-1">{(galleryImages || []).length}</p>
+              </div>
+              <div className="bg-surface-container-lowest p-4 rounded-xl border border-surface-container">
+                <span className="text-[10px] font-bold uppercase text-primary">Home Showcase</span>
+                <p className="text-2xl font-bold text-primary mt-1">{(galleryImages || []).filter(g => g.featured).length}</p>
+              </div>
+              <div className="bg-surface-container-lowest p-4 rounded-xl border border-surface-container">
+                <span className="text-[10px] font-bold uppercase text-on-surface-variant">Rooms & Suites</span>
+                <p className="text-2xl font-bold text-on-surface mt-1">{(galleryImages || []).filter(g => g.category === 'rooms').length}</p>
+              </div>
+              <div className="bg-surface-container-lowest p-4 rounded-xl border border-surface-container">
+                <span className="text-[10px] font-bold uppercase text-on-surface-variant">Exterior & Dining</span>
+                <p className="text-2xl font-bold text-on-surface mt-1">{(galleryImages || []).filter(g => g.category === 'exterior' || g.category === 'dining').length}</p>
+              </div>
+            </div>
+
+            {/* Add Photo Form Card */}
+            {isAddPhotoOpen && (
+              <div className="bg-surface-container-lowest rounded-2xl p-6 border-2 border-primary/20 shadow-md animate-in fade-in">
+                <div className="flex items-center justify-between pb-4 border-b border-surface-container mb-5">
+                  <h4 className="font-serif text-base font-bold text-on-surface flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary text-xl">add_circle</span>
+                    Add New Photo to Gallery
+                  </h4>
+                  <span className="text-[11px] text-on-surface-variant">Visible immediately on Home Page and Gallery</span>
+                </div>
+
+                {photoError && (
+                  <div className="mb-4 p-3 bg-red-50 text-error border border-red-200 rounded-xl text-xs flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sm">error</span>
+                    <span>{photoError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleAddPhotoSubmit} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-5">
+                    {/* Left Column: Image Source & Live Preview */}
+                    <div className="md:col-span-5 space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                          Photo Source <span className="text-primary">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Paste image URL (e.g. https://... or /rooms/...)"
+                          value={newPhotoForm.image}
+                          onChange={(e) => {
+                            setNewPhotoForm({ ...newPhotoForm, image: e.target.value });
+                            setPhotoPreview(e.target.value);
+                            setPhotoError('');
+                          }}
+                          className="w-full px-3 py-2 bg-surface-container-low border border-surface-container text-xs rounded-xl focus:border-primary focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <span className="text-[11px] text-on-surface-variant font-medium">OR</span>
+                        <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-surface-container text-xs font-bold text-on-surface rounded-lg hover:bg-surface-container-high transition-colors">
+                          <span className="material-symbols-outlined text-sm">upload_file</span>
+                          <span>Upload from Device</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={handlePhotoFileUpload}
+                            className="hidden"
+                          />
+                        </label>
+                      </div>
+
+                      {/* Live Image Preview Box */}
+                      <div className="h-44 rounded-xl border border-dashed border-surface-container-high bg-surface-container-low overflow-hidden flex items-center justify-center relative">
+                        {(photoPreview || newPhotoForm.image) ? (
+                          <img
+                            src={photoPreview || newPhotoForm.image}
+                            alt="Photo Preview"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              setPhotoError("Could not load preview. Please check image URL or try another photo.");
+                            }}
+                            onLoad={() => setPhotoError('')}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="text-center p-4 text-on-surface-variant">
+                            <span className="material-symbols-outlined text-3xl text-outline mb-1">image</span>
+                            <p className="text-[11px]">Image preview will appear here</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Right Column: Title, Category, Description, Featured */}
+                    <div className="md:col-span-7 space-y-3">
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                          Photo Title <span className="text-primary">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Executive Courtyard Suite"
+                          value={newPhotoForm.title}
+                          onChange={(e) => setNewPhotoForm({ ...newPhotoForm, title: e.target.value })}
+                          required
+                          className="w-full px-3 py-2 bg-surface-container-low border border-surface-container text-xs rounded-xl focus:border-primary focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                            Category <span className="text-primary">*</span>
+                          </label>
+                          <select
+                            value={newPhotoForm.category}
+                            onChange={(e) => setNewPhotoForm({ ...newPhotoForm, category: e.target.value })}
+                            className="w-full px-3 py-2 bg-surface-container-low border border-surface-container text-xs rounded-xl focus:border-primary focus:outline-none"
+                          >
+                            <option value="exterior">Exterior & Architecture</option>
+                            <option value="rooms">Rooms & Suites</option>
+                            <option value="dining">Dining & Restaurant</option>
+                            <option value="reception">Reception & Lobby</option>
+                            <option value="amenities">Amenities & Facilities</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                            Home Page Showcase
+                          </label>
+                          <label className="flex items-center gap-2 mt-2 cursor-pointer text-xs font-medium text-on-surface">
+                            <input
+                              type="checkbox"
+                              checked={newPhotoForm.featured}
+                              onChange={(e) => setNewPhotoForm({ ...newPhotoForm, featured: e.target.checked })}
+                              className="w-4 h-4 text-primary rounded"
+                            />
+                            <span>Feature on Home Page</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold uppercase tracking-wider text-on-surface-variant mb-1">
+                          Description / Caption
+                        </label>
+                        <textarea
+                          rows={3}
+                          placeholder="Brief description of the space, furnishings, or ambiance..."
+                          value={newPhotoForm.desc}
+                          onChange={(e) => setNewPhotoForm({ ...newPhotoForm, desc: e.target.value })}
+                          className="w-full px-3 py-2 bg-surface-container-low border border-surface-container text-xs rounded-xl focus:border-primary focus:outline-none resize-none"
+                        ></textarea>
+                      </div>
+
+                      <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAddPhotoOpen(false);
+                            setPhotoError('');
+                          }}
+                          className="px-4 py-2 text-xs font-bold text-on-surface-variant hover:text-on-surface rounded-xl transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="submit"
+                          className="px-5 py-2 bg-primary text-on-primary text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-primary-container transition-all shadow-sm"
+                        >
+                          Add to Gallery
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            {/* Filter Pills */}
+            <div className="flex flex-wrap items-center gap-2">
+              {[
+                { id: 'all', label: `All (${(galleryImages || []).length})` },
+                { id: 'featured', label: `★ Home Page Featured (${(galleryImages || []).filter(g => g.featured).length})` },
+                { id: 'exterior', label: `Exterior (${(galleryImages || []).filter(g => g.category === 'exterior').length})` },
+                { id: 'rooms', label: `Rooms (${(galleryImages || []).filter(g => g.category === 'rooms').length})` },
+                { id: 'dining', label: `Dining (${(galleryImages || []).filter(g => g.category === 'dining').length})` },
+                { id: 'reception', label: `Reception (${(galleryImages || []).filter(g => g.category === 'reception').length})` },
+                { id: 'amenities', label: `Amenities (${(galleryImages || []).filter(g => g.category === 'amenities').length})` },
+              ].map((pill) => (
+                <button
+                  key={pill.id}
+                  onClick={() => setGalleryCategoryFilter(pill.id)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+                    galleryCategoryFilter === pill.id
+                      ? 'bg-primary text-on-primary shadow-sm'
+                      : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container border border-surface-container'
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Photos Grid */}
+            {(() => {
+              const allPhotos = galleryImages || [];
+              const filteredPhotos = galleryCategoryFilter === 'all'
+                ? allPhotos
+                : galleryCategoryFilter === 'featured'
+                ? allPhotos.filter(p => p.featured)
+                : allPhotos.filter(p => p.category === galleryCategoryFilter);
+
+              if (filteredPhotos.length === 0) {
+                return (
+                  <div className="bg-surface-container-lowest rounded-2xl p-12 text-center border border-surface-container">
+                    <span className="material-symbols-outlined text-4xl text-outline mb-2">image_not_supported</span>
+                    <h4 className="font-bold text-sm text-on-surface">No Photos Found</h4>
+                    <p className="text-xs text-on-surface-variant mt-1 mb-4">
+                      No photos match the selected category filter.
+                    </p>
+                    <button
+                      onClick={() => setIsAddPhotoOpen(true)}
+                      className="px-4 py-2 bg-primary text-on-primary text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-primary-container transition-colors inline-flex items-center gap-1.5"
+                    >
+                      <span className="material-symbols-outlined text-sm">add_photo_alternate</span>
+                      <span>Add Photo Now</span>
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {filteredPhotos.map((item) => (
+                    <div
+                      key={item.id}
+                      className="bg-surface-container-lowest rounded-2xl overflow-hidden border border-surface-container shadow-sm hover:shadow-md transition-shadow flex flex-col group"
+                    >
+                      {/* Image Thumbnail Container */}
+                      <div className="relative h-48 bg-surface-container overflow-hidden">
+                        <img
+                          src={item.image}
+                          alt={item.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                        <span className="absolute top-2.5 left-2.5 px-2.5 py-1 bg-black/60 backdrop-blur-md rounded-md text-[10px] font-bold uppercase tracking-wider text-white">
+                          {item.category}
+                        </span>
+
+                        {item.featured && (
+                          <span className="absolute top-2.5 right-2.5 px-2.5 py-1 bg-amber-500/90 backdrop-blur-md rounded-md text-[10px] font-bold uppercase tracking-wider text-white flex items-center gap-1 shadow-sm">
+                            <span>★</span> Home Page
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Content */}
+                      <div className="p-4 flex-1 flex flex-col justify-between">
+                        <div>
+                          <h4 className="font-serif text-sm font-bold text-on-surface line-clamp-1">{item.title}</h4>
+                          {item.desc && (
+                            <p className="text-xs text-on-surface-variant mt-1 line-clamp-2 leading-relaxed">
+                              {item.desc}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex items-center justify-between gap-2 pt-3 mt-3 border-t border-surface-container">
+                          <button
+                            onClick={() => toggleGalleryFeatured(item.id)}
+                            className={`px-2.5 py-1 text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1 ${
+                              item.featured
+                                ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                                : 'border border-surface-container text-on-surface-variant hover:bg-surface-container'
+                            }`}
+                            title={item.featured ? "Remove from Home Page showcase" : "Display on Home Page showcase"}
+                          >
+                            <span>{item.featured ? '★' : '☆'}</span>
+                            <span>{item.featured ? 'Featured' : 'Feature'}</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Are you sure you want to remove "${item.title}" from the gallery?`)) {
+                                deleteGalleryImage(item.id);
+                              }
+                            }}
+                            className="px-2.5 py-1 border border-red-200 text-error hover:bg-red-50 text-[11px] font-bold rounded-lg transition-colors flex items-center gap-1"
+                            title="Delete photo from gallery"
+                          >
+                            <span className="material-symbols-outlined text-xs">delete</span>
+                            <span>Remove</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         )}
 
