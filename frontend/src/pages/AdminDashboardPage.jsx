@@ -295,31 +295,99 @@ export const AdminDashboardPage = () => {
   }
 
   return (
-    <div className="w-full flex flex-col min-h-screen pt-32 pb-16 bg-surface">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 w-full">
+    <div className="w-full flex flex-col min-h-screen pt-20 sm:pt-28 md:pt-32 pb-16 bg-surface">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-12 w-full">
         
         {/* Admin Header */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
           <div>
-            <span className="text-xs font-bold uppercase tracking-widest text-primary flex items-center gap-1">
-              <span className="material-symbols-outlined text-[16px]">admin_panel_settings</span>
-              Hotel Operations & Management Command
+            <span className="text-[11px] font-bold uppercase tracking-widest text-primary flex items-center gap-1">
+              <span className="material-symbols-outlined text-[15px]">admin_panel_settings</span>
+              Operations Command
             </span>
-            <h1 className="font-serif text-3xl font-bold text-on-surface mt-0.5">
+            <h1 className="font-serif text-2xl sm:text-3xl font-bold text-on-surface mt-0.5">
               Ambience Inn Admin Portal
             </h1>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="px-3 py-1.5 bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-1.5">
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-[11px] font-bold rounded-xl flex items-center gap-1.5 shadow-xs">
               <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse"></span>
-              Real Supabase Sync Active
+              Real Database Sync
             </span>
           </div>
         </div>
 
-        {/* Navigation Tabs Bar */}
-        <div className="bg-surface-container-lowest rounded-2xl p-2 border border-surface-container shadow-sm mb-8 overflow-x-auto flex items-center gap-1 scrollbar-none">
+        {/* Mobile Navigation Controls (Touch-Friendly Dropdown + Quick Pills) */}
+        <div className="block md:hidden mb-5 space-y-2.5">
+          {/* Quick Select Dropdown */}
+          <div className="relative">
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value)}
+              className="w-full appearance-none bg-surface-container-lowest border-2 border-primary/25 text-on-surface font-bold text-xs sm:text-sm px-4 py-3 rounded-2xl shadow-sm focus:border-primary focus:outline-none pr-10"
+            >
+              {[
+                { id: 'overview', label: '📊 Dashboard Overview' },
+                { id: 'bookings', label: `🛎️ Bookings (${bookingsList.length})` },
+                { id: 'pricing', label: '⚡ Room Pricing & Rates' },
+                { id: 'rooms', label: '🛏️ Physical Rooms Inventory' },
+                { id: 'gallery', label: `🖼️ Gallery & Home Showcase (${galleryImages?.length || 0})` },
+                { id: 'customers', label: `👥 Customers (${adminCustomers.length})` },
+                { id: 'availability', label: '📅 Availability Matrix' },
+                { id: 'offers', label: `🏷️ Offers & Promos (${offers.length})` },
+                { id: 'reviews', label: `⭐ Reviews Moderation (${reviews.length})` },
+                { id: 'settings', label: '⚙️ Hotel Settings' }
+              ].map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3.5 text-primary">
+              <span className="material-symbols-outlined">expand_more</span>
+            </div>
+          </div>
+
+          {/* Quick Touch Pill Bar */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {[
+              { id: 'overview', label: 'Dashboard', icon: 'dashboard' },
+              { id: 'bookings', label: 'Bookings', icon: 'book_online', badge: bookingsList.length },
+              { id: 'pricing', label: 'Pricing ⚡', icon: 'payments', highlight: true },
+              { id: 'rooms', label: 'Rooms', icon: 'king_bed' },
+              { id: 'gallery', label: 'Gallery', icon: 'photo_library', badge: galleryImages?.length || 0 },
+              { id: 'customers', label: 'Customers', icon: 'groups' },
+              { id: 'availability', label: 'Availability', icon: 'event_available' },
+              { id: 'offers', label: 'Offers', icon: 'local_offer' },
+              { id: 'reviews', label: 'Reviews', icon: 'rate_review' },
+              { id: 'settings', label: 'Settings', icon: 'settings' }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 whitespace-nowrap transition-all shrink-0 ${
+                  activeTab === tab.id
+                    ? 'bg-primary text-on-primary shadow-sm'
+                    : tab.highlight
+                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                    : 'bg-surface-container-lowest text-on-surface-variant border border-surface-container'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[15px]">{tab.icon}</span>
+                <span>{tab.label}</span>
+                {tab.badge !== undefined && (
+                  <span className={`px-1.5 py-0.2 rounded-full text-[9px] ${activeTab === tab.id ? 'bg-white/20 text-white' : 'bg-surface-container-high text-on-surface'}`}>
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Desktop Navigation Tabs Bar */}
+        <div className="hidden md:flex bg-surface-container-lowest rounded-2xl p-2 border border-surface-container shadow-sm mb-8 overflow-x-auto items-center gap-1 scrollbar-none">
           {[
             { id: 'overview', label: 'Dashboard', icon: 'dashboard' },
             { id: 'bookings', label: 'Bookings', icon: 'book_online', badge: bookingsList.length },
@@ -328,7 +396,7 @@ export const AdminDashboardPage = () => {
             { id: 'customers', label: 'Customers', icon: 'groups' },
             { id: 'availability', label: 'Availability', icon: 'event_available' },
             { id: 'offers', label: 'Offers', icon: 'local_offer' },
-            { id: 'gallery', label: 'Gallery', icon: 'photo_library' },
+            { id: 'gallery', label: 'Gallery', icon: 'photo_library', badge: galleryImages?.length || 0 },
             { id: 'reviews', label: 'Reviews', icon: 'rate_review' },
             { id: 'settings', label: 'Settings', icon: 'settings' }
           ].map((tab) => (
@@ -356,60 +424,61 @@ export const AdminDashboardPage = () => {
 
         {/* TAB 1: OVERVIEW DASHBOARD */}
         {activeTab === 'overview' && (
-          <div className="space-y-8">
-            {/* Metrics Bar */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-surface-container-lowest p-5 rounded-2xl border border-surface-container shadow-sm flex items-center justify-between">
+          <div className="space-y-6 sm:space-y-8">
+            {/* Metrics Bar: 2x2 on Mobile, 4 Cols on Desktop */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+              <div className="bg-surface-container-lowest p-3.5 sm:p-5 rounded-2xl border border-surface-container shadow-sm flex items-center justify-between">
                 <div>
-                  <span className="text-xs text-on-surface-variant font-bold uppercase">Total Revenue</span>
-                  <span className="font-serif text-2xl font-bold text-primary block mt-1">₹{totalRevenue.toLocaleString()}</span>
+                  <span className="text-[10px] sm:text-xs text-on-surface-variant font-bold uppercase tracking-wider">Revenue</span>
+                  <span className="font-serif text-lg sm:text-2xl font-bold text-primary block mt-0.5">₹{totalRevenue.toLocaleString()}</span>
                 </div>
-                <div className="w-12 h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold">
-                  <span className="material-symbols-outlined">payments</span>
+                <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold shrink-0">
+                  <span className="material-symbols-outlined text-lg sm:text-2xl">payments</span>
                 </div>
               </div>
 
-              <div className="bg-surface-container-lowest p-5 rounded-2xl border border-surface-container shadow-sm flex items-center justify-between">
+              <div className="bg-surface-container-lowest p-3.5 sm:p-5 rounded-2xl border border-surface-container shadow-sm flex items-center justify-between">
                 <div>
-                  <span className="text-xs text-on-surface-variant font-bold uppercase">Total Bookings</span>
-                  <span className="font-serif text-2xl font-bold text-on-surface block mt-1">{totalBookingsCount}</span>
+                  <span className="text-[10px] sm:text-xs text-on-surface-variant font-bold uppercase tracking-wider">Bookings</span>
+                  <span className="font-serif text-lg sm:text-2xl font-bold text-on-surface block mt-0.5">{totalBookingsCount}</span>
                 </div>
-                <div className="w-12 h-12 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold">
-                  <span className="material-symbols-outlined">book_online</span>
+                <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold shrink-0">
+                  <span className="material-symbols-outlined text-lg sm:text-2xl">book_online</span>
                 </div>
               </div>
 
-              <div className="bg-surface-container-lowest p-5 rounded-2xl border border-surface-container shadow-sm flex items-center justify-between">
+              <div className="bg-surface-container-lowest p-3.5 sm:p-5 rounded-2xl border border-surface-container shadow-sm flex items-center justify-between">
                 <div>
-                  <span className="text-xs text-on-surface-variant font-bold uppercase">Available Rooms</span>
-                  <span className="font-serif text-2xl font-bold text-emerald-700 block mt-1">{availableRoomsCount} / {physicalRoomsList.length}</span>
+                  <span className="text-[10px] sm:text-xs text-on-surface-variant font-bold uppercase tracking-wider">Rooms Avail.</span>
+                  <span className="font-serif text-lg sm:text-2xl font-bold text-emerald-700 block mt-0.5">{availableRoomsCount} / {physicalRoomsList.length}</span>
                 </div>
-                <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                  <span className="material-symbols-outlined">meeting_room</span>
+                <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold shrink-0">
+                  <span className="material-symbols-outlined text-lg sm:text-2xl">meeting_room</span>
                 </div>
               </div>
 
-              <div className="bg-surface-container-lowest p-5 rounded-2xl border border-surface-container shadow-sm flex items-center justify-between">
+              <div className="bg-surface-container-lowest p-3.5 sm:p-5 rounded-2xl border border-surface-container shadow-sm flex items-center justify-between">
                 <div>
-                  <span className="text-xs text-on-surface-variant font-bold uppercase">Checked-In Guests</span>
-                  <span className="font-serif text-2xl font-bold text-amber-700 block mt-1">{checkedInCount}</span>
+                  <span className="text-[10px] sm:text-xs text-on-surface-variant font-bold uppercase tracking-wider">Checked-In</span>
+                  <span className="font-serif text-lg sm:text-2xl font-bold text-amber-700 block mt-0.5">{checkedInCount}</span>
                 </div>
-                <div className="w-12 h-12 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
-                  <span className="material-symbols-outlined">key</span>
+                <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold shrink-0">
+                  <span className="material-symbols-outlined text-lg sm:text-2xl">key</span>
                 </div>
               </div>
             </div>
 
             {/* Recent Reservations Preview */}
-            <div className="bg-surface-container-lowest rounded-2xl border border-surface-container p-6 shadow-sm">
+            <div className="bg-surface-container-lowest rounded-2xl border border-surface-container p-4 sm:p-6 shadow-sm">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="font-serif text-lg font-bold text-on-surface">Recent Reservations</h3>
+                <h3 className="font-serif text-base sm:text-lg font-bold text-on-surface">Recent Reservations</h3>
                 <button onClick={() => setActiveTab('bookings')} className="text-xs font-bold text-primary hover:underline">
                   View All ({bookingsList.length}) →
                 </button>
               </div>
 
-              <div className="overflow-x-auto">
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-surface-container-low border-b border-surface-container text-on-surface-variant uppercase font-bold text-[10px]">
                     <tr>
@@ -469,20 +538,81 @@ export const AdminDashboardPage = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Cards View (Easy, Touch-Friendly, Uncongested) */}
+              <div className="md:hidden space-y-3">
+                {adminBookingsLoading ? (
+                  <div className="py-8 text-center text-on-surface-variant text-xs">
+                    Loading reservations...
+                  </div>
+                ) : bookingsList.length > 0 ? (
+                  bookingsList.slice(0, 5).map((b) => (
+                    <div key={b.fullId || b.id} className="p-3.5 bg-surface-container-low/70 rounded-xl border border-surface-container space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono font-bold text-xs text-primary">{b.id}</span>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                          b.status === 'Confirmed' ? 'bg-blue-100 text-blue-800' :
+                          b.status === 'Checked-In' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {b.status}
+                        </span>
+                      </div>
+
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <h4 className="font-bold text-sm text-on-surface">{b.guestName}</h4>
+                          <p className="text-xs text-on-surface-variant">{b.roomTitle} {b.roomNumber ? `(#${b.roomNumber})` : ''}</p>
+                          <p className="text-[11px] text-on-surface-variant font-medium mt-0.5">{b.checkIn} → {b.checkOut}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="font-serif font-bold text-base text-primary block">₹{b.totalPrice?.toLocaleString()}</span>
+                        </div>
+                      </div>
+
+                      {(b.status === 'Confirmed' || b.status === 'Checked-In') && (
+                        <div className="pt-2 border-t border-surface-container flex items-center gap-2">
+                          {b.status === 'Confirmed' && (
+                            <button
+                              onClick={() => updateBookingStatusAdmin(b.fullId || b.id, 'Checked-In')}
+                              className="w-full py-2.5 bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase hover:bg-emerald-800 transition-colors flex items-center justify-center gap-1 shadow-xs"
+                            >
+                              <span className="material-symbols-outlined text-sm">login</span>
+                              <span>Check-In Guest</span>
+                            </button>
+                          )}
+                          {b.status === 'Checked-In' && (
+                            <button
+                              onClick={() => updateBookingStatusAdmin(b.fullId || b.id, 'Checked-Out')}
+                              className="w-full py-2.5 bg-gray-700 text-white rounded-xl text-xs font-bold uppercase hover:bg-gray-800 transition-colors flex items-center justify-center gap-1"
+                            >
+                              <span className="material-symbols-outlined text-sm">logout</span>
+                              <span>Check-Out Guest</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="py-6 text-center text-on-surface-variant text-xs">
+                    No reservations found in database.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
 
         {/* TAB 2: BOOKINGS MANAGEMENT */}
         {activeTab === 'bookings' && (
-          <div className="space-y-6">
-            <div className="bg-surface-container-lowest rounded-2xl p-5 border border-surface-container shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-              <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+          <div className="space-y-4 sm:space-y-6">
+            <div className="bg-surface-container-lowest rounded-2xl p-4 sm:p-5 border border-surface-container shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 sm:gap-4">
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none w-full md:w-auto">
                 {['all', 'Confirmed', 'Checked-In', 'Checked-Out', 'Cancelled'].map((f) => (
                   <button
                     key={f}
                     onClick={() => setStatusFilter(f)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors shrink-0 ${
                       statusFilter === f
                         ? 'bg-primary text-on-primary shadow-sm'
                         : 'bg-surface-container-low text-on-surface-variant hover:bg-surface-container'
@@ -506,7 +636,8 @@ export const AdminDashboardPage = () => {
             </div>
 
             <div className="bg-surface-container-lowest rounded-2xl border border-surface-container shadow-sm overflow-hidden">
-              <div className="overflow-x-auto">
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-surface-container-low border-b border-surface-container text-on-surface-variant uppercase font-bold text-[10px] tracking-wider">
                     <tr>
@@ -607,6 +738,133 @@ export const AdminDashboardPage = () => {
                   </tbody>
                 </table>
               </div>
+
+              {/* Mobile Cards View (Touch-Optimized & Uncongested) */}
+              <div className="md:hidden divide-y divide-surface-container">
+                {filteredBookings.length > 0 ? (
+                  filteredBookings.map((b) => (
+                    <div key={b.fullId || b.id} className="p-4 space-y-3 bg-surface-container-lowest">
+                      {/* Top Row: Ref ID + Status */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-bold text-xs text-primary">{b.id}</span>
+                          <span className="text-[10px] text-on-surface-variant font-normal">{b.createdAt}</span>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded text-[10px] font-bold uppercase ${
+                          b.status === 'Confirmed' ? 'bg-blue-100 text-blue-800' :
+                          b.status === 'Checked-In' ? 'bg-emerald-100 text-emerald-800' :
+                          b.status === 'Checked-Out' ? 'bg-gray-100 text-gray-700' : 'bg-amber-100 text-amber-800'
+                        }`}>
+                          {b.status}
+                        </span>
+                      </div>
+
+                      {/* Guest Details */}
+                      <div className="bg-surface-container-low/60 rounded-xl p-3 space-y-1">
+                        <div className="font-bold text-sm text-on-surface">{b.guestName}</div>
+                        <div className="flex items-center justify-between flex-wrap gap-1 text-xs">
+                          {b.guestPhone && (
+                            <a
+                              href={`tel:${b.guestPhone}`}
+                              className="inline-flex items-center gap-1 text-primary font-bold hover:underline"
+                            >
+                              <span className="material-symbols-outlined text-xs">call</span>
+                              <span>{b.guestPhone}</span>
+                            </a>
+                          )}
+                          <span className="text-on-surface-variant text-[11px]">{b.guestEmail}</span>
+                        </div>
+                      </div>
+
+                      {/* Room & Stay Details */}
+                      <div className="flex items-center justify-between text-xs">
+                        <div>
+                          <span className="font-bold text-on-surface block">{b.roomTitle} {b.roomNumber ? `(#${b.roomNumber})` : ''}</span>
+                          <span className="text-on-surface-variant text-[11px]">{b.checkIn} → {b.checkOut}</span>
+                        </div>
+                        <span className="text-[11px] text-on-surface-variant bg-surface-container px-2 py-0.5 rounded font-medium">
+                          {b.guests}
+                        </span>
+                      </div>
+
+                      {/* Financials & Payment Status */}
+                      <div className="pt-2 border-t border-surface-container flex items-center justify-between">
+                        <div>
+                          <span className="font-serif font-bold text-base text-primary block">₹{b.totalPrice?.toLocaleString()}</span>
+                          <span className="text-[10px] text-on-surface-variant">{b.paymentMethod || 'Pay Upon Arrival'}</span>
+                        </div>
+                        <div className="text-right">
+                          <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                            b.paymentStatus === 'Paid' || b.rawPaymentStatus === 'paid'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {b.paymentStatus || 'Pending'}
+                          </span>
+                          {b.amountPending > 0 && (
+                            <div className="text-[10px] text-amber-800 font-semibold mt-0.5">Due: ₹{b.amountPending.toLocaleString()}</div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Mobile Touch Action Buttons */}
+                      <div className="pt-2 border-t border-surface-container space-y-2">
+                        {b.paymentStatus !== 'Paid' && b.rawPaymentStatus !== 'paid' && (
+                          <button
+                            onClick={() => updatePaymentStatusAdmin(b.fullId || b.id, 'paid')}
+                            className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold uppercase hover:bg-emerald-700 transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                          >
+                            <span className="material-symbols-outlined text-sm">payments</span>
+                            <span>Mark Payment Received</span>
+                          </button>
+                        )}
+                        <div className="flex items-center gap-2">
+                          {b.status === 'Pending' && (
+                            <button
+                              onClick={() => updateBookingStatusAdmin(b.fullId || b.id, 'Confirmed')}
+                              className="flex-1 py-2.5 bg-blue-700 text-white rounded-xl text-xs font-bold uppercase hover:bg-blue-800 transition-colors flex items-center justify-center gap-1"
+                            >
+                              <span className="material-symbols-outlined text-sm">check_circle</span>
+                              <span>Confirm</span>
+                            </button>
+                          )}
+                          {b.status === 'Confirmed' && (
+                            <button
+                              onClick={() => updateBookingStatusAdmin(b.fullId || b.id, 'Checked-In')}
+                              className="flex-1 py-2.5 bg-emerald-700 text-white rounded-xl text-xs font-bold uppercase hover:bg-emerald-800 transition-colors flex items-center justify-center gap-1 shadow-xs"
+                            >
+                              <span className="material-symbols-outlined text-sm">login</span>
+                              <span>Check-In</span>
+                            </button>
+                          )}
+                          {b.status === 'Checked-In' && (
+                            <button
+                              onClick={() => updateBookingStatusAdmin(b.fullId || b.id, 'Checked-Out')}
+                              className="flex-1 py-2.5 bg-gray-700 text-white rounded-xl text-xs font-bold uppercase hover:bg-gray-800 transition-colors flex items-center justify-center gap-1"
+                            >
+                              <span className="material-symbols-outlined text-sm">logout</span>
+                              <span>Check-Out</span>
+                            </button>
+                          )}
+                          {b.status !== 'Cancelled' && b.status !== 'Checked-Out' && (
+                            <button
+                              onClick={() => updateBookingStatusAdmin(b.fullId || b.id, 'Cancelled')}
+                              className={`${(b.status === 'Confirmed' || b.status === 'Checked-In' || b.status === 'Pending') ? 'w-28' : 'w-full'} py-2.5 border border-red-200 text-error rounded-xl text-xs font-bold uppercase hover:bg-red-50 transition-colors flex items-center justify-center gap-1`}
+                            >
+                              <span className="material-symbols-outlined text-sm">cancel</span>
+                              <span>Cancel</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="py-12 text-center text-on-surface-variant text-xs">
+                    No reservation records match your filter criteria.
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -614,21 +872,21 @@ export const AdminDashboardPage = () => {
         {/* TAB 3: PHYSICAL ROOM MANAGEMENT */}
         {activeTab === 'rooms' && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
-                <h3 className="font-serif text-xl font-bold text-on-surface">Physical Room Inventory</h3>
+                <h3 className="font-serif text-lg sm:text-xl font-bold text-on-surface">Physical Room Inventory</h3>
                 <p className="text-xs text-on-surface-variant">Manage physical room details and availability status in public.rooms</p>
               </div>
               <button
                 onClick={() => { setAddRoomError(''); setIsAddRoomOpen(true); }}
-                className="px-4 py-2.5 bg-primary text-on-primary text-xs font-bold uppercase rounded-xl hover:bg-primary-container shadow-md flex items-center gap-1.5"
+                className="w-full sm:w-auto justify-center px-4 py-2.5 bg-primary text-on-primary text-xs font-bold uppercase rounded-xl hover:bg-primary-container shadow-md flex items-center gap-1.5"
               >
                 <span className="material-symbols-outlined text-base">add</span>
                 <span>Add Physical Room</span>
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
               {physicalRooms.map((pRoom) => {
                 const roomTypeObj = pRoom.room_types || rooms.find(rt => rt.id === pRoom.room_type_id) || {};
                 const isOccupiedToday = occupiedRoomIds.has(pRoom.id);
@@ -686,21 +944,21 @@ export const AdminDashboardPage = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               {rooms.map((roomType) => (
                 <div
                   key={roomType.id}
-                  className="bg-surface-container-lowest rounded-2xl p-6 border border-surface-container shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-6"
+                  className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4 sm:gap-6"
                 >
-                  <div className="flex items-center gap-4">
-                    <img src={roomType.image} alt={roomType.title} className="w-20 h-20 rounded-xl object-cover" />
+                  <div className="flex items-center gap-3.5 sm:gap-4">
+                    <img src={roomType.image} alt={roomType.title} className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover shrink-0" />
                     <div>
                       <span className="text-[10px] font-bold uppercase text-primary tracking-widest">{roomType.category} Class</span>
-                      <h4 className="font-serif text-xl font-bold text-on-surface">{roomType.title}</h4>
+                      <h4 className="font-serif text-lg sm:text-xl font-bold text-on-surface">{roomType.title}</h4>
                       <p className="text-xs text-on-surface-variant mt-0.5">{roomType.size} • {roomType.occupancy}</p>
                       
-                      <div className="mt-3 flex items-baseline gap-2">
-                        <span className="font-serif text-2xl font-bold text-primary">
+                      <div className="mt-2.5 sm:mt-3 flex items-baseline gap-2">
+                        <span className="font-serif text-xl sm:text-2xl font-bold text-primary">
                           ₹{(roomType.price || roomType.base_price || 0).toLocaleString()}
                         </span>
                         <span className="text-xs text-on-surface-variant font-medium">/ night</span>
@@ -710,7 +968,7 @@ export const AdminDashboardPage = () => {
 
                   <button
                     onClick={() => handleOpenEditPrice(roomType)}
-                    className="px-5 py-3 bg-primary text-on-primary font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-primary-container shadow-md transition-all shrink-0 flex items-center gap-1.5"
+                    className="w-full sm:w-auto justify-center px-5 py-2.5 sm:py-3 bg-primary text-on-primary font-bold text-xs uppercase tracking-wider rounded-xl hover:bg-primary-container shadow-md transition-all shrink-0 flex items-center gap-1.5"
                   >
                     <span className="material-symbols-outlined text-base">edit</span>
                     <span>Edit Price</span>
@@ -724,11 +982,13 @@ export const AdminDashboardPage = () => {
         {/* TAB 5: CUSTOMER DIRECTORY */}
         {activeTab === 'customers' && (
           <div className="bg-surface-container-lowest rounded-2xl border border-surface-container shadow-sm overflow-hidden">
-            <div className="p-5 border-b border-surface-container flex items-center justify-between">
-              <h3 className="font-serif text-lg font-bold text-on-surface">Registered Guest Directory</h3>
-              <span className="text-xs text-on-surface-variant font-medium">Total Registered: {adminCustomers.length}</span>
+            <div className="p-4 sm:p-5 border-b border-surface-container flex items-center justify-between">
+              <h3 className="font-serif text-base sm:text-lg font-bold text-on-surface">Registered Guest Directory</h3>
+              <span className="text-xs text-on-surface-variant font-medium">Total: {adminCustomers.length}</span>
             </div>
-            <div className="overflow-x-auto">
+
+            {/* Desktop Table View */}
+            <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-surface-container-low border-b border-surface-container text-on-surface-variant uppercase font-bold text-[10px]">
                   <tr>
@@ -767,15 +1027,57 @@ export const AdminDashboardPage = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile Cards View */}
+            <div className="md:hidden divide-y divide-surface-container">
+              {adminCustomers.length > 0 ? (
+                adminCustomers.map((c) => (
+                  <div key={c.fullId || c.id} className="p-4 space-y-2.5 bg-surface-container-lowest">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-bold text-sm text-on-surface">{c.name}</h4>
+                      <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-bold uppercase rounded">
+                        {c.status}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col gap-1 text-xs">
+                      {c.phone && (
+                        <a
+                          href={`tel:${c.phone}`}
+                          className="inline-flex items-center gap-1.5 text-primary font-bold hover:underline"
+                        >
+                          <span className="material-symbols-outlined text-xs">call</span>
+                          <span>{c.phone}</span>
+                        </a>
+                      )}
+                      <div className="text-on-surface-variant text-[11px]">{c.email}</div>
+                    </div>
+
+                    <div className="pt-2 border-t border-surface-container flex items-center justify-between text-xs">
+                      <span className="text-on-surface-variant">
+                        Total: <strong className="text-on-surface font-semibold">{c.totalBookings} stay(s)</strong>
+                      </span>
+                      <span className="text-on-surface-variant text-[11px]">
+                        Last: {c.lastBookingDate}
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="py-8 text-center text-on-surface-variant text-xs">
+                  No customer profiles found in database.
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {/* TAB 6: AVAILABILITY MATRIX */}
         {activeTab === 'availability' && (
-          <div className="bg-surface-container-lowest rounded-2xl p-6 border border-surface-container shadow-sm space-y-6">
-            <h3 className="font-serif text-lg font-bold text-on-surface">Room Availability Matrix</h3>
+          <div className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container shadow-sm space-y-4 sm:space-y-6">
+            <h3 className="font-serif text-base sm:text-lg font-bold text-on-surface">Room Availability Matrix</h3>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
               {physicalRoomsList.map((pRoom) => {
                 const roomTypeObj = pRoom.room_types || rooms.find(rt => rt.id === pRoom.room_type_id) || {};
                 const isOccupiedToday = occupiedRoomIds.has(pRoom.id);
@@ -810,20 +1112,20 @@ export const AdminDashboardPage = () => {
         {/* TAB 7: OFFERS MANAGEMENT */}
         {activeTab === 'offers' && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h3 className="font-serif text-xl font-bold text-on-surface">Promotions & Offers</h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className="font-serif text-lg sm:text-xl font-bold text-on-surface">Promotions & Offers</h3>
               <button
                 onClick={() => setIsAddOfferOpen(true)}
-                className="px-4 py-2 bg-primary text-on-primary text-xs font-bold uppercase rounded-xl hover:bg-primary-container shadow-md flex items-center gap-1.5"
+                className="w-full sm:w-auto justify-center px-4 py-2 bg-primary text-on-primary text-xs font-bold uppercase rounded-xl hover:bg-primary-container shadow-md flex items-center gap-1.5"
               >
                 <span className="material-symbols-outlined text-base">add</span>
                 <span>Add Offer</span>
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
               {offers.map((offer) => (
-                <div key={offer.id} className="bg-surface-container-lowest rounded-2xl p-6 border border-surface-container shadow-sm flex flex-col justify-between">
+                <div key={offer.id} className="bg-surface-container-lowest rounded-2xl p-4 sm:p-6 border border-surface-container shadow-sm flex flex-col justify-between">
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <span className="px-2.5 py-1 bg-amber-100 text-amber-800 font-mono font-bold text-xs rounded">{offer.code}</span>
@@ -892,22 +1194,22 @@ export const AdminDashboardPage = () => {
             </div>
 
             {/* Quick Stats Banner */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="bg-surface-container-lowest p-4 rounded-xl border border-surface-container">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-4">
+              <div className="bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-surface-container">
                 <span className="text-[10px] font-bold uppercase text-on-surface-variant">Total Photos</span>
-                <p className="text-2xl font-bold text-on-surface mt-1">{(galleryImages || []).length}</p>
+                <p className="text-xl sm:text-2xl font-bold text-on-surface mt-1">{(galleryImages || []).length}</p>
               </div>
-              <div className="bg-surface-container-lowest p-4 rounded-xl border border-surface-container">
+              <div className="bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-surface-container">
                 <span className="text-[10px] font-bold uppercase text-primary">Home Showcase</span>
-                <p className="text-2xl font-bold text-primary mt-1">{(galleryImages || []).filter(g => g.featured).length}</p>
+                <p className="text-xl sm:text-2xl font-bold text-primary mt-1">{(galleryImages || []).filter(g => g.featured).length}</p>
               </div>
-              <div className="bg-surface-container-lowest p-4 rounded-xl border border-surface-container">
+              <div className="bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-surface-container">
                 <span className="text-[10px] font-bold uppercase text-on-surface-variant">Rooms & Suites</span>
-                <p className="text-2xl font-bold text-on-surface mt-1">{(galleryImages || []).filter(g => g.category === 'rooms').length}</p>
+                <p className="text-xl sm:text-2xl font-bold text-on-surface mt-1">{(galleryImages || []).filter(g => g.category === 'rooms').length}</p>
               </div>
-              <div className="bg-surface-container-lowest p-4 rounded-xl border border-surface-container">
+              <div className="bg-surface-container-lowest p-3 sm:p-4 rounded-xl border border-surface-container">
                 <span className="text-[10px] font-bold uppercase text-on-surface-variant">Exterior & Dining</span>
-                <p className="text-2xl font-bold text-on-surface mt-1">{(galleryImages || []).filter(g => g.category === 'exterior' || g.category === 'dining').length}</p>
+                <p className="text-xl sm:text-2xl font-bold text-on-surface mt-1">{(galleryImages || []).filter(g => g.category === 'exterior' || g.category === 'dining').length}</p>
               </div>
             </div>
 
@@ -1074,7 +1376,7 @@ export const AdminDashboardPage = () => {
             )}
 
             {/* Filter Pills */}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none">
               {[
                 { id: 'all', label: `All (${(galleryImages || []).length})` },
                 { id: 'featured', label: `★ Home Page Featured (${(galleryImages || []).filter(g => g.featured).length})` },
@@ -1087,7 +1389,7 @@ export const AdminDashboardPage = () => {
                 <button
                   key={pill.id}
                   onClick={() => setGalleryCategoryFilter(pill.id)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-colors ${
                     galleryCategoryFilter === pill.id
                       ? 'bg-primary text-on-primary shadow-sm'
                       : 'bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container border border-surface-container'
@@ -1212,7 +1514,7 @@ export const AdminDashboardPage = () => {
                   </div>
                   <p className="text-xs text-on-surface-variant mt-1">"{rev.comment}"</p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-1.5 sm:gap-2 shrink-0">
                   {rev.status === 'Pending' ? (
                     <>
                       <button onClick={() => approveReview(rev.id)} className="px-3 py-1 bg-emerald-700 text-white text-[10px] font-bold uppercase rounded">Approve</button>
@@ -1229,8 +1531,8 @@ export const AdminDashboardPage = () => {
 
         {/* TAB 10: HOTEL SETTINGS */}
         {activeTab === 'settings' && (
-          <div className="max-w-2xl bg-surface-container-lowest rounded-2xl p-6 sm:p-8 border border-surface-container shadow-sm">
-            <h3 className="font-serif text-xl font-bold text-on-surface pb-4 border-b border-surface-container mb-6">
+          <div className="max-w-2xl bg-surface-container-lowest rounded-2xl p-4 sm:p-8 border border-surface-container shadow-sm">
+            <h3 className="font-serif text-lg sm:text-xl font-bold text-on-surface pb-4 border-b border-surface-container mb-6">
               Hotel Information & Policies Settings
             </h3>
             <form onSubmit={handleSaveSettings} className="space-y-4">
@@ -1242,7 +1544,7 @@ export const AdminDashboardPage = () => {
                 <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1">Address</label>
                 <input type="text" value={settingsForm.address} onChange={(e) => setSettingsForm({ ...settingsForm, address: e.target.value })} className="w-full px-4 py-2 bg-surface-container-low border text-xs rounded-xl" />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold uppercase text-on-surface-variant mb-1">Phone</label>
                   <input type="text" value={settingsForm.phone} onChange={(e) => setSettingsForm({ ...settingsForm, phone: e.target.value })} className="w-full px-4 py-2 bg-surface-container-low border text-xs rounded-xl" />
@@ -1252,7 +1554,7 @@ export const AdminDashboardPage = () => {
                   <input type="email" value={settingsForm.email} onChange={(e) => setSettingsForm({ ...settingsForm, email: e.target.value })} className="w-full px-4 py-2 bg-surface-container-low border text-xs rounded-xl" />
                 </div>
               </div>
-              <button type="submit" className="px-6 py-3 bg-primary text-on-primary font-bold text-xs uppercase rounded-xl shadow-md mt-4">
+              <button type="submit" className="w-full sm:w-auto px-6 py-3 bg-primary text-on-primary font-bold text-xs uppercase rounded-xl shadow-md mt-4">
                 Save Hotel Settings
               </button>
             </form>
