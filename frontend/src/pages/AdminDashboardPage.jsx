@@ -295,7 +295,7 @@ export const AdminDashboardPage = () => {
   }
 
   return (
-    <div className="w-full flex flex-col min-h-screen pt-20 sm:pt-28 md:pt-32 pb-16 bg-surface">
+    <div className="w-full flex flex-col min-h-screen pt-36 pb-16 bg-surface">
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-12 w-full">
         
         {/* Admin Header */}
